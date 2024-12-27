@@ -1,0 +1,6 @@
+install
+fastapi
+uvicorn
+sqlalchemy
+httpx
+pydantic
