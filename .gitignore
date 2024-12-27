@@ -1,4 +1,4 @@
-llama.cpp
 .venv
 __pycache__
 *.db
+logs

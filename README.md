@@ -31,61 +31,20 @@ A full-stack chat application featuring a modern web interface built with Svelte
 
 ## Installation
 
-### 1. Clone the repository
+### Clone and Setup
 
 ```bash
-git clone https://github.com/Qervas/Llamalog.git
+# Clone the repository with submodules
+git clone --recursive https://github.com/Qervas/Llamalog.git
 cd Llamalog
-```
 
-### 2. Set up llama.cpp
+# Run the setup script
+# For Unix/MacOS:
+chmod +x setup.sh
+./setup.sh
 
-First, you need to have llama.cpp installed and running:
-
-```bash
-# Clone llama.cpp repository
-git clone https://github.com/ggerganov/llama.cpp
-cd llama.cpp
-
-# Build the project
-cmake -B build -DGGML_CUDA=ON
-cmake --build build --config Release
-
-# Download or provide your own model
-# Example with a compatible model:
-wget https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-f16.gguf
-
-# Start the server (adjust parameters as needed)
-./build/bin/llama-server -m models/Llama-3.2-3B-Instruct-f16.gguf
-```
-
-### 3. Set up the Python Backend
-
-```bash
-# Create and activate virtual environment in the root directory
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .\venv\Scripts\activate
-
-# Install dependencies
-pip install -r backend/requirements.txt
-
-# Start the backend server
-
-cd backend
-uvicorn main:app --reload
-```
-
-### 4. Set up the Frontend
-
-```bash
-# Navigate to the frontend directory
-cd my-chat-app
-
-# Install dependencies
-npm install
-
-# Start the development server
-npm run dev
+# For Windows:
+.\setup.bat
 ```
 
 ## Configuration
@@ -113,6 +72,23 @@ The frontend configuration can be modified in `my-chat-app/src/App.svelte`:
 const API_BASE_URL = "http://localhost:8000";
 ```
 
+### Start the Application
+
+After the setup is complete, you can start all servers with a single command:
+
+```bash
+# For Unix/MacOS:
+./start.sh
+
+# For Windows:
+.\start.bat
+```
+
+The application will be available at:
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:8000
+- Llama.cpp Server: http://localhost:8080
+
 ## Usage
 
 1. Start the llama.cpp server with your chosen model
@@ -139,17 +115,23 @@ const API_BASE_URL = "http://localhost:8000";
 ### Project Structure
 
 ```
-├── my-chat-app/           # Frontend application
+├── llama.cpp/            # llama.cpp submodule
+│   └── models/          # Model storage directory
+├── my-chat-app/         # Frontend application
 │   ├── src/
-│   │   ├── App.svelte    # Main application component
-│   │   ├── lib/          # Shared components
-│   │   └── main.js       # Application entry point
-│   ├── public/           # Static assets
-│   └── package.json      # Frontend dependencies
-└────── backend/
-    ├── main.py           # Backend server
-    ├── db_models.py      # Database models
-    └── chat_history.db   # SQLite database
+│   │   ├── App.svelte   # Main application component
+│   │   ├── lib/         # Shared components
+│   │   └── main.js      # Application entry point
+│   ├── public/          # Static assets
+│   └── package.json     # Frontend dependencies
+├── backend/             # Backend application
+│   ├── main.py         # Backend server
+│   ├── db_models.py    # Database models
+│   └── requirements.txt # Python dependencies
+├── setup.sh            # Unix setup script
+├── setup.bat           # Windows setup script
+├── start.sh            # Unix start script
+└── start.bat          # Windows start script
 ```
 
 ### Customization
