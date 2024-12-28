@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onMount, afterUpdate, onDestroy } from "svelte";
     import MarkdownIt from "markdown-it";
     import katex from "katex";
     import "katex/dist/katex.min.css";
@@ -17,10 +17,49 @@
     import "prismjs/components/prism-sql";
     import ClipboardJS from "clipboard";
     import DOMPurify from "dompurify";
+    import { artifacts } from "./stores";
 
     export let content = "";
     let renderedContent = "";
     let mounted = false;
+    const codeBlocksMap = new Map();
+
+    function updateArtifact(id, content, lang) {
+        artifacts.update((state) => {
+            const items = state.items.map((item) =>
+                item.id === id
+                    ? {
+                          ...item,
+                          content,
+                          size: `${content.split("\n").length} lines`,
+                      }
+                    : item,
+            );
+
+            // If artifact doesn't exist, create it
+            if (!items.find((item) => item.id === id)) {
+                items.push({
+                    id,
+                    type: "code",
+                    title: `Code Block (${lang || "text"})`,
+                    content,
+                    size: `${content.split("\n").length} lines`,
+                });
+            }
+
+            // If this is the currently viewed artifact, update it
+            const currentArtifact =
+                state.currentArtifact?.id === id
+                    ? items.find((item) => item.id === id)
+                    : state.currentArtifact;
+
+            return {
+                ...state,
+                items,
+                currentArtifact,
+            };
+        });
+    }
 
     // Initialize markdown-it with necessary configurations
     const md = new MarkdownIt({
@@ -28,6 +67,30 @@
         linkify: true,
         breaks: true,
         highlight: function (str, lang) {
+            if (str.split("\n").length > 5) {
+                // Create a unique identifier for this code position
+                const hash = btoa(str.slice(0, 50)).slice(0, 32); // Hash based on start of content
+                let id = codeBlocksMap.get(hash) || crypto.randomUUID();
+                codeBlocksMap.set(hash, id);
+
+                // Update the artifact with latest content
+                updateArtifact(id, str, lang);
+
+                return `<div class="code-preview" data-artifact-id="${id}">
+                  <div class="preview-header">
+                    <span class="language">${lang || "text"}</span>
+                    <span class="preview-info">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5"/>
+                        <path d="M15 12H3"/>
+                      </svg>
+                      View full code (${str.split("\n").length} lines)
+                    </span>
+                  </div>
+                </div>`;
+            }
+
+            // Regular highlighting for short code blocks
             if (lang && Prism.languages[lang]) {
                 try {
                     return `<pre class="language-${lang}"><code>${Prism.highlight(str, Prism.languages[lang], lang)}</code></pre>`;
@@ -119,14 +182,43 @@
     md.use(katexPlugin);
 
     onMount(() => {
-        mounted = true;
-        const clipboard = new ClipboardJS(".copy-button");
-        clipboard.on("success", (e) => {
-            const button = e.trigger as HTMLButtonElement;
-            button.innerHTML = "Copied!";
-            setTimeout(() => (button.innerHTML = "Copy"), 2000);
+        document.addEventListener("showArtifact", (e) => {
+            artifacts.update((state) => {
+                const artifact = state.items.find(
+                    (item) => item.id === e.detail,
+                );
+                return artifact
+                    ? {
+                          ...state,
+                          visible: true,
+                          currentArtifact: artifact,
+                      }
+                    : state;
+            });
         });
-        return () => clipboard.destroy();
+    });
+
+    afterUpdate(() => {
+        const codeBlocks = document.querySelectorAll(".code-preview");
+        codeBlocks.forEach((block) => {
+            if (!block.hasAttribute("data-handler-attached")) {
+                block.setAttribute("data-handler-attached", "true");
+                block.addEventListener("click", () => {
+                    const artifactId = block.getAttribute("data-artifact-id");
+                    artifacts.update((state) => ({
+                        ...state,
+                        visible: true,
+                        currentArtifact: state.items.find(
+                            (item) => item.id === artifactId,
+                        ),
+                    }));
+                });
+            }
+        });
+    });
+
+    onDestroy(() => {
+        codeBlocksMap.clear();
     });
 
     $: {
@@ -333,5 +425,45 @@
     .markdown-content {
         min-height: 2rem;
         contain: content;
+    }
+
+    :global(.code-preview) {
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        margin: 1rem 0;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+
+    :global(.code-preview:hover) {
+        background-color: #f5f5f5;
+    }
+
+    :global(.code-preview .preview-header) {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    :global(.code-preview .language) {
+        font-family: monospace;
+        color: #666;
+        font-size: 0.875rem;
+    }
+
+    :global(.code-preview .preview-info) {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #2196f3;
+        font-size: 0.875rem;
+    }
+
+    :global(.code-preview .preview-info svg) {
+        width: 16px;
+        height: 16px;
+        stroke: currentColor;
     }
 </style>

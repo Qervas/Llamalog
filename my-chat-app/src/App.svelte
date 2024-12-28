@@ -2,9 +2,10 @@
     import { onDestroy, onMount } from "svelte";
     import { fade } from "svelte/transition";
     import Markdown from "./lib/Markdown.svelte";
-    import { modelSettings } from "./lib/stores";
+    import { modelSettings, artifacts } from "./lib/stores";
     import ModelSettings from "./lib/ModelSettings.svelte";
     import FileUpload from "./lib/FileUpload.svelte";
+    import Artifact from "./lib/Artifact.svelte";
 
     let message = "";
     let chatHistory = [];
@@ -90,12 +91,37 @@
         }
     }
 
+    function formatSize(bytes) {
+        const units = ["B", "KB", "MB", "GB"];
+        let size = bytes;
+        let unitIndex = 0;
+
+        while (size >= 1024 && unitIndex < units.length - 1) {
+            size /= 1024;
+            unitIndex++;
+        }
+
+        return `${size.toFixed(1)} ${units[unitIndex]}`;
+    }
+
     async function handleFileContent(content, filename) {
-        // Don't append analysis request, just store the file content
-        return {
-            filename,
+        const id = crypto.randomUUID();
+        const artifact = {
+            id,
+            type: "file",
+            title: filename,
             content,
+            size: formatSize(content.length),
         };
+
+        artifacts.update((state) => ({
+            ...state,
+            items: [...state.items, artifact],
+            visible: true,
+            currentArtifact: artifact,
+        }));
+
+        return `[File: ${filename}] (Click to view content)`;
     }
 
     async function sendMessage() {
@@ -492,7 +518,6 @@
 
     <div class="main-content" class:sidebar-collapsed={!showSidebar}>
         <header>
-            <!-- svelte-ignore a11y_consider_explicit_label -->
             <button
                 class="toggle-sidebar"
                 on:click={() => (showSidebar = !showSidebar)}
@@ -507,28 +532,37 @@
                 </svg>
             </button>
             <h1>AI Assistant</h1>
-            <!-- svelte-ignore a11y_consider_explicit_label -->
-            <button
-                class="settings-button"
-                on:click={() => (showSettings = true)}
-            >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                    />
-                    <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                    />
-                </svg>
-            </button>
+            <div class="header-actions">
+                <button
+                    class="artifacts-button"
+                    on:click={() =>
+                        artifacts.update((state) => ({
+                            ...state,
+                            visible: !state.visible,
+                        }))}
+                    title="View Artifacts"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path
+                            d="M20 11.08V8l-6-6H6a2 2 0 00-2 2v16c0 1.1.9 2 2 2h12a2 2 0 002-2v-3.08"
+                        />
+                        <path d="M18 14v4" />
+                        <path d="M18 22v.01" />
+                    </svg>
+                </button>
+                <button
+                    class="settings-button"
+                    on:click={() => (showSettings = true)}
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" />
+                        <path
+                            d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"
+                        />
+                    </svg>
+                </button>
+            </div>
         </header>
-
         <main>
             <div
                 class="chat-container"
@@ -562,7 +596,45 @@
                                         >
                                     </div>
                                 {:else}
-                                    <Markdown content={chat.ai_response} />
+                                    <div class="response-container">
+                                        <div class="response-actions">
+                                            <button
+                                                class="copy-response"
+                                                on:click={() => {
+                                                    navigator.clipboard.writeText(
+                                                        chat.ai_response,
+                                                    );
+                                                    const button =
+                                                        document.activeElement;
+                                                    if (button) {
+                                                        const originalText =
+                                                            button.innerHTML;
+                                                        button.innerHTML =
+                                                            "Copied!";
+                                                        setTimeout(() => {
+                                                            button.innerHTML =
+                                                                originalText;
+                                                        }, 2000);
+                                                    }
+                                                }}
+                                                title="Copy response"
+                                            >
+                                                <svg
+                                                    viewBox="0 0 24 24"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                >
+                                                    <path
+                                                        d="M8 4v12a2 2 0 002 2h8a2 2 0 002-2V7.242a2 2 0 00-.602-1.43L16.083 2.57A2 2 0 0014.685 2H10a2 2 0 00-2 2z"
+                                                    />
+                                                    <path
+                                                        d="M16 18v2a2 2 0 01-2 2H6a2 2 0 01-2-2V9a2 2 0 012-2h2"
+                                                    />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                        <Markdown content={chat.ai_response} />
+                                    </div>
                                 {/if}
                             </div>
                         </div>
@@ -646,6 +718,7 @@
         </main>
     </div>
     <ModelSettings bind:show={showSettings} />
+    <Artifact />
 </div>
 
 <style>
@@ -828,10 +901,14 @@
         margin-bottom: 1.5rem;
     }
 
-    .message {
-        display: flex;
-        gap: 1rem;
-        margin-bottom: 1rem;
+    .message .content {
+        position: relative;
+        flex: 1;
+        padding: 1rem;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        max-width: calc(100% - 60px);
     }
 
     .avatar {
@@ -854,15 +931,6 @@
     .ai .avatar {
         background: #4caf50;
         color: white;
-    }
-
-    .content {
-        flex: 1;
-        padding: 1rem;
-        background: white;
-        border-radius: 12px;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        max-width: calc(100% - 60px);
     }
 
     .content p {
@@ -1221,5 +1289,96 @@
         min-height: 24px;
         max-height: 200px;
         resize: none;
+    }
+
+    .code-preview {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    .code-preview:hover {
+        background: #e9ecef;
+    }
+
+    .preview-header {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.5rem 1rem;
+        background: #f1f3f5;
+        border-bottom: 1px solid #e9ecef;
+        font-size: 0.875rem;
+        color: #495057;
+    }
+
+    .preview-content {
+        margin: 0;
+        padding: 1rem;
+        overflow: hidden;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .artifacts-button {
+        padding: 0.5rem;
+        background: transparent;
+        color: #333;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .artifacts-button svg {
+        width: 24px;
+        height: 24px;
+    }
+
+    .artifacts-button:hover {
+        color: #2196f3;
+    }
+
+    .response-container {
+        position: relative;
+    }
+
+    .response-actions {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        z-index: 1;
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+
+    .content:hover .response-actions {
+        opacity: 1;
+    }
+
+    .copy-response {
+        padding: 0.5rem;
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 4px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #666;
+        transition: all 0.2s;
+    }
+
+    .copy-response:hover {
+        background: #e9ecef;
+        color: #333;
+    }
+
+    .copy-response svg {
+        width: 16px;
+        height: 16px;
     }
 </style>

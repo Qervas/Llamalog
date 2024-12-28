@@ -9,3 +9,9 @@ export const modelSettings = writable({
   frequency_penalty: 0,
   stream: true,
 });
+
+export const artifacts = writable({
+  visible: false,
+  currentArtifact: null,
+  items: [],
+});
