@@ -11,8 +11,11 @@ from pydantic import BaseModel
 from db_models import Base, Conversation, Session, Artifact
 from typing import Optional
 from file_processor import process_file
-from utils import generate_snippet_title
+from utils.gen_titles import generate_snippet_title
 from pydantic import BaseModel
+from utils.llm_client import LLMClient
+from utils.search import WebSearchEnhancer
+import logging
 
 
 class TitleRequest(BaseModel):
@@ -35,6 +38,9 @@ DATABASE_URL = "sqlite:///./chat_history.db"
 engine = create_engine(DATABASE_URL)
 Base.metadata.create_all(engine)
 SessionLocal = sessionmaker(bind=engine)
+
+llm_client = LLMClient()
+web_enhancer = WebSearchEnhancer(llm_client, max_tokens_per_chunk=600)
 
 class ChatMessage(BaseModel):
     message: str
@@ -275,6 +281,73 @@ async def chat(chat_message: ChatMessage):
             except Exception as e:
                 db_inner.rollback()
                 raise e
+            finally:
+                db_inner.close()
+
+        return StreamingResponse(
+            stream_response(),
+            media_type="text/event-stream"
+        )
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+@app.post("/chat/web")
+async def chat_with_web(chat_message: ChatMessage):
+    logger = logging.getLogger(__name__)
+
+    db = SessionLocal()
+    try:
+        session_id = chat_message.session_id
+        if not session_id:
+            title = chat_message.message[:30] + "..." if len(chat_message.message) > 30 else chat_message.message
+            new_session = Session(title="New Chat")
+            db.add(new_session)
+            db.commit()
+            db.refresh(new_session)
+            session_id = new_session.id
+
+        async def stream_response():
+            collected_response = []
+            db_inner = SessionLocal()
+
+            try:
+                context = [
+                    {"role": "user", "content": msg.user_input}
+                    for msg in db_inner.query(Conversation).filter(
+                        Conversation.session_id == session_id
+                    ).order_by(Conversation.timestamp.desc()).limit(3)
+                ]
+
+                # Get the response generator
+                response_generator = web_enhancer.enhance_response(
+                    chat_message.message,
+                    context=context
+                )
+
+                # Iterate through the responses
+                async for chunk in response_generator:
+                    collected_response.append(chunk)
+                    yield f"data: {json.dumps({'content': chunk})}\n\n"
+                    await asyncio.sleep(0.01)  # Small delay for natural flow
+
+                # Save complete conversation to database
+                complete_response = "".join(collected_response)
+                conversation = Conversation(
+                    session_id=session_id,
+                    user_input=chat_message.message,
+                    ai_response=complete_response
+                )
+                db_inner.add(conversation)
+                db_inner.commit()
+
+            except Exception as e:
+                logger.error(f"Error in stream_response: {str(e)}")
+                db_inner.rollback()
+                yield f"data: {json.dumps({'content': f'Error: {str(e)}'})}\n\n"
             finally:
                 db_inner.close()
 

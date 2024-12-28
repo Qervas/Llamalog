@@ -8,6 +8,7 @@ export const modelSettings = writable({
   presence_penalty: 0,
   frequency_penalty: 0,
   stream: true,
+  useWebSearch: false,
 });
 
 export const artifacts = writable({

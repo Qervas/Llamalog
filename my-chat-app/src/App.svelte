@@ -24,7 +24,6 @@
     export let show = false;
     let fileUploadComponent;
     let isDragging = false;
-    let dragCounter = 0;
     let selectedFiles = [];
 
     let localSettings;
@@ -171,7 +170,10 @@
             ];
             scrollToBottom();
 
-            const response = await fetch("http://localhost:8000/chat", {
+            const endpoint = $modelSettings.useWebSearch
+                ? "/chat/web"
+                : "/chat";
+            const response = await fetch(`http://localhost:8000${endpoint}`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -421,6 +423,8 @@
     }
 </script>
 
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
     class="app-container"
     on:dragenter|preventDefault
@@ -474,6 +478,7 @@
 
         <div class="sessions-list">
             {#each sessions as session}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <div
                     class="session-item"
                     class:active={currentSessionId === session.id}
@@ -507,6 +512,7 @@
                         </span>
                     {/if}
 
+                    <!-- svelte-ignore a11y_consider_explicit_label -->
                     <button
                         class="delete-session"
                         on:click|stopPropagation={() =>
@@ -533,6 +539,7 @@
 
     <div class="main-content" class:sidebar-collapsed={!showSidebar}>
         <header>
+            <!-- svelte-ignore a11y_consider_explicit_label -->
             <button
                 class="toggle-sidebar"
                 on:click={() => (showSidebar = !showSidebar)}
@@ -549,6 +556,7 @@
             <h1>AI Assistant</h1>
             <div class="header-actions">
                 <ThemeToggle />
+                <!-- svelte-ignore a11y_consider_explicit_label -->
                 <button
                     class="artifacts-button"
                     on:click={() =>
@@ -566,6 +574,7 @@
                         <path d="M18 22v.01" />
                     </svg>
                 </button>
+                <!-- svelte-ignore a11y_consider_explicit_label -->
                 <button
                     class="settings-button"
                     on:click={() => (showSettings = true)}

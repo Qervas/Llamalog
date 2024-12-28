@@ -39,6 +39,22 @@
         <h2>Model Settings</h2>
 
         <div class="setting-group">
+            <label class="toggle-label">
+                <span>Enable Web Search</span>
+                <div class="toggle-switch">
+                    <input
+                        type="checkbox"
+                        bind:checked={localSettings.useWebSearch}
+                    />
+                    <span class="slider"></span>
+                </div>
+            </label>
+            <span class="hint"
+                >Allow AI to search the internet for up-to-date information</span
+            >
+        </div>
+
+        <div class="setting-group">
             <label for="model">Model</label>
             <select id="model" bind:value={localSettings.model}>
                 <option value="llama-3.2-3b-instruct"
@@ -200,5 +216,64 @@
 
     button:hover {
         opacity: 0.9;
+    }
+
+    .toggle-label {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+    }
+
+    .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 48px;
+        height: 24px;
+    }
+
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: var(--button-background);
+        transition: 0.4s;
+        border-radius: 24px;
+    }
+
+    .slider:before {
+        position: absolute;
+        content: "";
+        height: 18px;
+        width: 18px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: 0.4s;
+        border-radius: 50%;
+    }
+
+    input:checked + .slider {
+        background-color: var(--accent-primary);
+    }
+
+    input:checked + .slider:before {
+        transform: translateX(24px);
+    }
+
+    .hint {
+        display: block;
+        font-size: 0.875rem;
+        color: var(--text-secondary);
+        margin-top: 0.25rem;
     }
 </style>

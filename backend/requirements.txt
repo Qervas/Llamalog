@@ -7,3 +7,6 @@ python-magic
 PyPDF2
 python-docx
 python-multipart
+aiohttp
+beautifulsoup4
+brotli
