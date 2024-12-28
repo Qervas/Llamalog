@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import httpx
@@ -10,6 +10,8 @@ from sqlalchemy.orm import sessionmaker
 from pydantic import BaseModel
 from db_models import Base, Conversation, Session
 from typing import Optional
+from file_processor import process_file
+
 
 app = FastAPI()
 
@@ -119,6 +121,17 @@ async def get_sessions():
         "created_at": session.created_at,
         "updated_at": session.updated_at
     } for session in sessions]
+
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    content = await process_file(file)
+    if content is None:
+        raise HTTPException(status_code=400, detail="Could not process file")
+
+    return {
+        "filename": file.filename,
+        "content": content
+    }
 
 @app.post("/chat")
 async def chat(chat_message: ChatMessage):

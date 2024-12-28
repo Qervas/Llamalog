@@ -1,9 +1,10 @@
 <script>
-    import { onMount } from "svelte";
+    import { onDestroy, onMount } from "svelte";
     import { fade } from "svelte/transition";
     import Markdown from "./lib/Markdown.svelte";
     import { modelSettings } from "./lib/stores";
     import ModelSettings from "./lib/ModelSettings.svelte";
+    import FileUpload from "./lib/FileUpload.svelte";
 
     let message = "";
     let chatHistory = [];
@@ -18,6 +19,10 @@
     let shouldAutoScroll = true;
     let showSettings = false;
     export let show = false;
+    let fileUploadComponent;
+    let isDragging = false;
+    let dragCounter = 0;
+    let selectedFiles = [];
 
     let localSettings;
     $: localSettings = { ...$modelSettings };
@@ -85,44 +90,66 @@
         }
     }
 
-    async function sendMessage() {
-        if (!message.trim()) return;
+    async function handleFileContent(content, filename) {
+        // Don't append analysis request, just store the file content
+        return {
+            filename,
+            content,
+        };
+    }
 
-        const userMessage = message;
-        message = "";
+    async function sendMessage() {
+        if (!message.trim() && !selectedFiles.length) return;
+
         loading = true;
         shouldAutoScroll = true;
-
-        // Ensure a session exists
-        if (!currentSessionId) {
-            const newSession = await createNewSession();
-            currentSessionId = newSession.id;
-
-            // Auto-rename the session based on first message
-            const title =
-                userMessage.slice(0, 30) +
-                (userMessage.length > 30 ? "..." : "");
-            await updateSessionTitle(currentSessionId, title);
-        }
-
-        chatHistory = [
-            ...chatHistory,
-            {
-                user_input: userMessage,
-                ai_response: "",
-                isStreaming: true,
-            },
-        ];
-        scrollToBottom();
-
         try {
+            // Process files first if any
+            const fileContent =
+                selectedFiles.length > 0 ? await processFiles() : "";
+
+            // Combine user message with file content
+            let finalMessage = "";
+            if (fileContent && message.trim()) {
+                finalMessage = `${message}\n\nAttached files:\n${fileContent}`;
+            } else if (fileContent) {
+                finalMessage = `Please analyze these files:\n\n${fileContent}`;
+            } else {
+                finalMessage = message;
+            }
+
+            // Clear the input and files
+            message = "";
+            selectedFiles = [];
+
+            // Ensure a session exists
+            if (!currentSessionId) {
+                const newSession = await createNewSession();
+                currentSessionId = newSession.id;
+                await updateSessionTitle(
+                    currentSessionId,
+                    finalMessage.slice(0, 30) + "...",
+                );
+            }
+
+            // Add message to chat history
+            chatHistory = [
+                ...chatHistory,
+                {
+                    user_input: finalMessage,
+                    ai_response: "",
+                    isStreaming: true,
+                },
+            ];
+            scrollToBottom();
+
             const response = await fetch("http://localhost:8000/chat", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                    message: userMessage,
+                    message: finalMessage,
                     session_id: currentSessionId,
                     settings: $modelSettings,
                 }),
@@ -227,6 +254,41 @@
             editingSessionId = null;
         }
     }
+    async function processFiles() {
+        if (!selectedFiles.length) return "";
+        let fileContents = [];
+
+        try {
+            for (const fileData of selectedFiles) {
+                const formData = new FormData();
+                formData.append("file", fileData.file);
+
+                const response = await fetch("http://localhost:8000/upload", {
+                    method: "POST",
+                    body: formData,
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Failed to upload file: ${fileData.name}`);
+                }
+
+                const result = await response.json();
+                fileContents.push({
+                    content: result.content,
+                    filename: fileData.name,
+                });
+            }
+
+            // Format the file contents section
+            return fileContents
+                .map((f) => `[File: ${f.filename}]\n${f.content}`)
+                .join("\n\n");
+        } catch (error) {
+            console.error("Error processing files:", error);
+            alert("Failed to process files. Please try again.");
+            return "";
+        }
+    }
 
     function handleTitleKeydown(event, session) {
         if (event.key === "Enter") {
@@ -254,6 +316,49 @@
             }, 0);
         }
     }
+    function handleDragOver(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isDragging) {
+            isDragging = true;
+        }
+    }
+
+    function handleDragLeave(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        // Check if we're leaving the window
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = e.clientX;
+        const y = e.clientY;
+
+        if (
+            x <= rect.left ||
+            x >= rect.right ||
+            y <= rect.top ||
+            y >= rect.bottom
+        ) {
+            isDragging = false;
+        }
+    }
+
+    function handleDrop(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            fileUploadComponent?.handleFiles(files);
+        }
+        isDragging = false;
+    }
+
+    function handleDragEnter(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!isDragging) {
+            isDragging = true;
+        }
+    }
 
     onMount(async () => {
         try {
@@ -267,10 +372,51 @@
         textareaElement?.focus();
     });
 
+    onDestroy(() => {
+        isDragging = false;
+        dragCounter = 0;
+    });
+
     $: mainContentClass = showSidebar ? "" : "sidebar-collapsed";
 </script>
 
-<div class="app-container">
+<div
+    class="app-container"
+    on:dragenter|preventDefault
+    on:dragover={handleDragOver}
+    on:dragleave={handleDragLeave}
+    on:drop={handleDrop}
+>
+    {#if isDragging}
+        <div
+            class="drag-overlay"
+            on:dragover|preventDefault
+            on:dragleave={handleDragLeave}
+            on:drop={handleDrop}
+        >
+            <div class="drag-content">
+                {#if fileUploadComponent?.loading}
+                    <div class="loading-spinner" />
+                    <span>Processing file...</span>
+                {:else}
+                    <svg
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    <span>Drop files here</span>
+                    <span class="supported-formats"
+                        >Any file type supported</span
+                    >
+                {/if}
+            </div>
+        </div>
+    {/if}
     <!-- Sidebar -->
     <aside class="sidebar" class:collapsed={!showSidebar}>
         <button class="new-chat" on:click={createNewSession}>
@@ -393,6 +539,7 @@
                     <div class="welcome-message">
                         <h2>Welcome! 👋</h2>
                         <p>How can I help you today?</p>
+                        <FileUpload onFileProcess={handleFileContent} />
                     </div>
                 {/if}
 
@@ -425,6 +572,51 @@
 
             <div class="input-container">
                 <div class="input-wrapper">
+                    <button
+                        class="upload-button"
+                        title="Upload file"
+                        on:click={() => {
+                            const fileInput = document.querySelector(
+                                '.file-upload input[type="file"]',
+                            );
+                            if (fileInput) fileInput.click();
+                        }}
+                    >
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                        >
+                            <path d="M12 5v13M5 12l7-7 7 7" />
+                        </svg>
+                    </button>
+
+                    {#if selectedFiles.length > 0}
+                        <div class="selected-files">
+                            {#each selectedFiles as file}
+                                <div class="file-chip">
+                                    <span>{file.name}</span>
+                                    <button
+                                        class="remove-file"
+                                        on:click={() => {
+                                            selectedFiles =
+                                                selectedFiles.filter(
+                                                    (f) => f !== file,
+                                                );
+                                        }}>×</button
+                                    >
+                                </div>
+                            {/each}
+                        </div>
+                    {/if}
+
+                    <FileUpload
+                        bind:this={fileUploadComponent}
+                        on:filesSelected={({ detail }) => {
+                            selectedFiles = [...selectedFiles, ...detail.files];
+                        }}
+                    />
+
                     <textarea
                         bind:this={textareaElement}
                         bind:value={message}
@@ -434,25 +626,20 @@
                                 sendMessage();
                             }
                         }}
-                        placeholder="Type your message... (Press Enter to send, Shift+Enter for new line)"
+                        placeholder="Type your message..."
                         disabled={loading}
                         rows="1"
-                    ></textarea>
+                    />
                     <button
                         on:click={sendMessage}
-                        disabled={loading || !message.trim()}
-                        class:active={message.trim()}
-                        aria-label="Send message"
+                        disabled={loading ||
+                            (!message.trim() && !selectedFiles.length)}
+                        class:active={message.trim() ||
+                            selectedFiles.length > 0}
                     >
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="currentColor"
-                            aria-hidden="true"
-                        >
+                        <svg viewBox="0 0 24 24" fill="currentColor">
                             <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
                         </svg>
-                        <span class="sr-only">Send</span>
                     </button>
                 </div>
             </div>
@@ -695,6 +882,10 @@
         display: flex;
         gap: 0.5rem;
         align-items: flex-end;
+        background: white;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+        padding: 0.4rem;
     }
 
     textarea {
@@ -888,5 +1079,147 @@
     .settings-button svg {
         width: 24px;
         height: 24px;
+    }
+
+    .upload-button {
+        padding: 0.5rem;
+        background: transparent;
+        border: none;
+        color: #6b7280;
+        cursor: pointer;
+        transition: color 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .upload-button:hover {
+        color: #2196f3;
+    }
+
+    .upload-button svg {
+        width: 1.25rem;
+        height: 1.25rem;
+    }
+
+    .input-wrapper {
+        display: flex;
+        gap: 0.5rem;
+        align-items: flex-end;
+        background: white;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+        padding: 0.4rem;
+    }
+
+    .drag-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(33, 150, 243, 0.15);
+        backdrop-filter: blur(2px);
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+    }
+
+    .drag-content {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+        border: 3px dashed #2196f3;
+        transition: all 0.2s ease;
+        pointer-events: none;
+    }
+
+    .drag-content svg {
+        width: 48px;
+        height: 48px;
+        color: #2196f3;
+    }
+
+    .drag-content span {
+        font-size: 1.2rem;
+        color: #2196f3;
+        font-weight: 500;
+    }
+
+    .drag-content:hover {
+        transform: scale(1.02);
+    }
+
+    .drag-overlay.dragging .drag-content {
+        border-color: #1976d2;
+        background: #e3f2fd;
+    }
+
+    .loading-spinner {
+        width: 48px;
+        height: 48px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #2196f3;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        0% {
+            transform: rotate(0deg);
+        }
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+
+    .selected-files {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 0.5rem 0;
+    }
+
+    .file-chip {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.25rem 0.5rem;
+        background: #f3f4f6;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        color: #374151;
+    }
+
+    .remove-file {
+        padding: 0;
+        background: transparent;
+        border: none;
+        color: #6b7280;
+        cursor: pointer;
+        font-size: 1rem;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .remove-file:hover {
+        color: #ef4444;
+    }
+
+    .input-wrapper textarea {
+        border: none;
+        padding: 0.5rem;
+        min-height: 24px;
+        max-height: 200px;
+        resize: none;
     }
 </style>

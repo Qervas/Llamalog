@@ -3,3 +3,7 @@ uvicorn
 sqlalchemy
 httpx
 pydantic
+python-magic
+PyPDF2
+python-docx
+python-multipart
