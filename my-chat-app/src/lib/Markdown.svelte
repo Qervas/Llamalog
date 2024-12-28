@@ -6,15 +6,41 @@
     import Prism from "prismjs";
     import "prismjs/themes/prism-tomorrow.css";
     // Import necessary Prism languages
-    import "prismjs/components/prism-rust";
+    import "prismjs/components/prism-c";
+    import "prismjs/components/prism-cpp";
+    import "prismjs/components/prism-csharp";
+    import "prismjs/components/prism-java";
+    import "prismjs/components/prism-kotlin";
+    import "prismjs/components/prism-swift";
+    import "prismjs/components/prism-go";
+    import "prismjs/components/prism-php";
     import "prismjs/components/prism-python";
-    import "prismjs/components/prism-bash";
-    import "prismjs/components/prism-javascript";
-    import "prismjs/components/prism-typescript";
-    import "prismjs/components/prism-json";
-    import "prismjs/components/prism-markdown";
-    import "prismjs/components/prism-yaml";
+    import "prismjs/components/prism-ruby";
+    import "prismjs/components/prism-rust";
+    import "prismjs/components/prism-dart";
+    import "prismjs/components/prism-perl";
+    import "prismjs/components/prism-scala";
     import "prismjs/components/prism-sql";
+    import "prismjs/components/prism-r";
+    import "prismjs/components/prism-lua";
+    import "prismjs/components/prism-haskell";
+    import "prismjs/components/prism-bash";
+    import "prismjs/components/prism-yaml";
+    import "prismjs/components/prism-toml";
+    import "prismjs/components/prism-json";
+    import "prismjs/components/prism-css";
+    import "prismjs/components/prism-scss";
+    import "prismjs/components/prism-jsx";
+    import "prismjs/components/prism-tsx";
+    import "prismjs/components/prism-typescript";
+    import "prismjs/components/prism-graphql";
+    import "prismjs/components/prism-mongodb";
+    import "prismjs/components/prism-nginx";
+    import "prismjs/components/prism-shell-session";
+    import "prismjs/components/prism-vim";
+    import "prismjs/components/prism-regex";
+    import "prismjs/components/prism-makefile";
+    import "prismjs/components/prism-cmake";
     import ClipboardJS from "clipboard";
     import DOMPurify from "dompurify";
     import { artifacts } from "./stores";
@@ -24,30 +50,161 @@
     let mounted = false;
     const codeBlocksMap = new Map();
 
+    // Language detection and normalization
+    function normalizeLanguage(lang) {
+        if (!lang) return "text";
+
+        const languageMap = {
+            // JavaScript and TypeScript
+            js: "javascript",
+            javascript: "javascript",
+            ts: "typescript",
+            typescript: "typescript",
+            jsx: "jsx",
+            tsx: "tsx",
+
+            // Python
+            py: "python",
+            python: "python",
+            python3: "python",
+            py3: "python",
+
+            // Ruby
+            rb: "ruby",
+            ruby: "ruby",
+            rails: "ruby",
+
+            // Shell scripting
+            sh: "bash",
+            shell: "bash",
+            bash: "bash",
+            zsh: "bash",
+            "shell-session": "shell-session",
+
+            // C-family
+            c: "c",
+            cpp: "cpp",
+            "c++": "cpp",
+            h: "c",
+            hpp: "cpp",
+            cs: "csharp",
+            csharp: "csharp",
+
+            // Java and JVM
+            java: "java",
+            kotlin: "kotlin",
+            kt: "kotlin",
+            scala: "scala",
+            groovy: "groovy",
+
+            // Web
+            html: "html",
+            xml: "xml",
+            css: "css",
+            scss: "scss",
+            sass: "scss",
+            less: "less",
+            graphql: "graphql",
+            gql: "graphql",
+
+            // Go
+            go: "go",
+            golang: "go",
+
+            // Rust
+            rust: "rust",
+            rs: "rust",
+
+            // PHP
+            php: "php",
+
+            // Swift
+            swift: "swift",
+
+            // Dart
+            dart: "dart",
+            flutter: "dart",
+
+            // Database
+            sql: "sql",
+            mysql: "sql",
+            postgresql: "sql",
+            mongo: "mongodb",
+            mongodb: "mongodb",
+
+            // Configuration
+            yaml: "yaml",
+            yml: "yaml",
+            toml: "toml",
+            json: "json",
+            ini: "ini",
+            nginx: "nginx",
+            apache: "apache",
+
+            // Build tools
+            makefile: "makefile",
+            cmake: "cmake",
+            docker: "dockerfile",
+
+            // Other languages
+            r: "r",
+            perl: "perl",
+            pl: "perl",
+            lua: "lua",
+            haskell: "haskell",
+            hs: "haskell",
+            vim: "vim",
+
+            // Regular expressions
+            regex: "regex",
+            regexp: "regex",
+        };
+
+        const normalized = languageMap[lang.toLowerCase()];
+
+        // If we have a mapping and Prism supports it, use it
+        if (normalized && Prism.languages[normalized]) {
+            return normalized;
+        }
+
+        // If Prism directly supports the input language
+        if (Prism.languages[lang.toLowerCase()]) {
+            return lang.toLowerCase();
+        }
+
+        // Default fallback
+        return "text";
+    }
+
     function updateArtifact(id, content, lang) {
         artifacts.update((state) => {
+            // Create a more unique title
+            const timestamp = new Date().toLocaleTimeString();
+            const title = `${lang || "text"} snippet - ${timestamp}`;
+
             const items = state.items.map((item) =>
                 item.id === id
                     ? {
                           ...item,
                           content,
+                          title,
+                          language: lang || "text",
                           size: `${content.split("\n").length} lines`,
                       }
                     : item,
             );
 
-            // If artifact doesn't exist, create it
             if (!items.find((item) => item.id === id)) {
                 items.push({
                     id,
                     type: "code",
-                    title: `Code Block (${lang || "text"})`,
+                    title,
                     content,
+                    language: lang || "text",
                     size: `${content.split("\n").length} lines`,
                 });
             }
 
-            // If this is the currently viewed artifact, update it
             const currentArtifact =
                 state.currentArtifact?.id === id
                     ? items.find((item) => item.id === id)
@@ -67,36 +224,43 @@
         linkify: true,
         breaks: true,
         highlight: function (str, lang) {
+            const normalizedLang = normalizeLanguage(lang);
+
             if (str.split("\n").length > 5) {
-                // Create a unique identifier for this code position
-                const hash = btoa(str.slice(0, 50)).slice(0, 32); // Hash based on start of content
+                const hash = btoa(str.slice(0, 50) + normalizedLang).slice(
+                    0,
+                    32,
+                );
                 let id = codeBlocksMap.get(hash) || crypto.randomUUID();
                 codeBlocksMap.set(hash, id);
-
-                // Update the artifact with latest content
-                updateArtifact(id, str, lang);
+                updateArtifact(id, str, normalizedLang);
 
                 return `<div class="code-preview" data-artifact-id="${id}">
-                  <div class="preview-header">
-                    <span class="language">${lang || "text"}</span>
-                    <span class="preview-info">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5"/>
-                        <path d="M15 12H3"/>
-                      </svg>
-                      View full code (${str.split("\n").length} lines)
-                    </span>
-                  </div>
-                </div>`;
+                        <div class="preview-header">
+                            <span class="language">${normalizedLang}</span>
+                            <span class="preview-info">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                                    <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5"/>
+                                    <path d="M15 12H3"/>
+                                </svg>
+                                View full code (${str.split("\n").length} lines)
+                            </span>
+                        </div>
+                    </div>`;
             }
 
-            // Regular highlighting for short code blocks
-            if (lang && Prism.languages[lang]) {
+            if (normalizedLang !== "text") {
                 try {
-                    return `<pre class="language-${lang}"><code>${Prism.highlight(str, Prism.languages[lang], lang)}</code></pre>`;
-                } catch (__) {}
+                    return `<pre class="line-numbers language-${normalizedLang}"><code class="language-${normalizedLang}">${Prism.highlight(
+                        str,
+                        Prism.languages[normalizedLang],
+                        normalizedLang,
+                    )}</code></pre>`;
+                } catch (e) {
+                    console.error("Highlighting error:", e);
+                }
             }
-            return `<pre class="language-text"><code>${md.utils.escapeHtml(str)}</code></pre>`;
+            return `<pre class="line-numbers language-text"><code>${md.utils.escapeHtml(str)}</code></pre>`;
         },
     });
 

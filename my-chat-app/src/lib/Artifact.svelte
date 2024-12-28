@@ -114,7 +114,14 @@
             <div class="artifact-content">
                 {#if $artifacts.currentArtifact}
                     <div class="content-header">
-                        <h4>{$artifacts.currentArtifact.title}</h4>
+                        <div class="content-info">
+                            <h4>{$artifacts.currentArtifact.title}</h4>
+                            {#if $artifacts.currentArtifact.language}
+                                <span class="language-tag"
+                                    >{$artifacts.currentArtifact.language}</span
+                                >
+                            {/if}
+                        </div>
                         <button
                             class="copy-button"
                             data-clipboard-text={$artifacts.currentArtifact
@@ -135,7 +142,11 @@
                             Copy
                         </button>
                     </div>
-                    <pre><code>{$artifacts.currentArtifact.content}</code></pre>
+                    <pre
+                        class="language-{$artifacts.currentArtifact
+                            .language}"><code
+                            >{$artifacts.currentArtifact.content}</code
+                        ></pre>
                 {:else}
                     <div class="no-selection">
                         <p>Select an artifact to view its content</p>
@@ -318,5 +329,20 @@
         justify-content: center;
         height: 100%;
         color: #666;
+    }
+
+    .content-info {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .language-tag {
+        padding: 0.25rem 0.5rem;
+        background: #e2e8f0;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        color: #475569;
+        font-family: monospace;
     }
 </style>
