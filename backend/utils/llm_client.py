@@ -170,61 +170,39 @@ class LLMClient:
                 )
                 return ""
 
-    async def stream_complete(
-        self,
-        prompt: str,
-        max_tokens: Optional[int] = None,
-        temperature: float = 0.7,
-        system_prompt: Optional[str] = None
-    ) -> AsyncGenerator[str, None]:
+    async def stream_complete(self, prompt: str, system_prompt: str = None) -> AsyncGenerator[str, None]:
         """Streaming completion method for more responsive output"""
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-
         try:
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+
             async with httpx.AsyncClient(**self.client_settings) as client:
-                response = await client.post(
+                async with client.stream(
+                    "POST",
                     f"{self.base_url}/v1/chat/completions",
                     json={
                         "model": "llama-3.2-3b-instruct",
                         "messages": messages,
-                        "temperature": temperature,
+                        "temperature": 0.7,
                         "stream": True
                     },
                     timeout=self.timeout
-                )
+                ) as response:
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            line = line[6:]
+                        if line == "[DONE]" or not line.strip():
+                            continue
 
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        line = line[6:]
-                    if line == "[DONE]" or not line.strip():
-                        continue
-
-                    try:
-                        json_line = json.loads(line)
-                        if content := json_line.get('choices', [{}])[0].get('delta', {}).get('content'):
-                            yield content
-                    except json.JSONDecodeError:
-                        continue
+                        try:
+                            json_line = json.loads(line)
+                            if content := json_line.get('choices', [{}])[0].get('delta', {}).get('content'):
+                                yield content
+                        except json.JSONDecodeError:
+                            continue
 
         except Exception as e:
             logger.error(f"Stream error: {str(e)}")
             yield f"*Error: {str(e)}*"
-
-    def estimate_tokens(self, text: str) -> int:
-        """Estimate token count - improved version"""
-        # More accurate estimation based on GPT tokenization patterns
-        return len(text.encode('utf-8')) // 3
-
-    def get_metrics(self) -> Dict[str, Any]:
-        """Return current metrics"""
-        return {
-            "request_count": self.request_count,
-            "error_count": self.error_count,
-            "error_rate": self.error_count / max(self.request_count, 1),
-            "total_tokens": self.total_tokens,
-            "average_tokens_per_request": self.total_tokens / max(self.request_count, 1)
-        }

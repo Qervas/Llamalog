@@ -1,14 +1,18 @@
 import aiohttp
 import asyncio
 from bs4 import BeautifulSoup
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, AsyncGenerator
 import re
 from urllib.parse import quote_plus, urljoin
 import json
 import logging
 import traceback
 from typing import AsyncGenerator, AsyncIterator
+from cachetools import TTLCache
+from urllib.parse import urlparse
 from .content_extractor import ContentExtractor
+
+
 
 
 # Set up logging
@@ -212,167 +216,464 @@ class WebSearchEnhancer:
         self.max_content_length = 100000
         self.search_config = {
             "max_queries": 3,
-            "max_results_per_query": 2,
+            "max_results_per_query": 3,
             "max_retries": 2,
             "initial_delay": 1
         }
+        # Cache for webpage content with 1-hour TTL
+        self.content_cache = TTLCache(maxsize=100, ttl=3600)
 
+    async def calculate_relevance_score(self, content: str, query: str) -> float:
+        """Calculate relevance score between content and query."""
+        # Simple TF-IDF-like scoring
+        query_terms = set(query.lower().split())
+        content_lower = content.lower()
 
-    def __aiter__(self):
-        return self
+        # Calculate term frequency
+        term_freq = sum(content_lower.count(term) for term in query_terms)
 
-    async def chunk_summaries(self, summaries: List[Dict]) -> List[List[Dict]]:
-            """Break summaries into smaller chunks"""
-            chunks = []
-            current_chunk = []
-            current_length = 0
+        # Normalize by content length
+        score = term_freq / (len(content_lower.split()) + 1)
 
-            for summary in summaries:
-                # Rough estimate of tokens (characters/4 is a rough approximation)
-                summary_length = len(str(summary))
+        # Boost if query terms appear in first paragraph
+        first_para = content_lower.split('\n')[0]
+        if any(term in first_para for term in query_terms):
+            score *= 1.5
 
-                if current_length + summary_length > self.max_tokens_per_chunk:
-                    if current_chunk:
-                        chunks.append(current_chunk)
-                    current_chunk = [summary]
-                    current_length = summary_length
-                else:
-                    current_chunk.append(summary)
-                    current_length += summary_length
+        return score
 
-            if current_chunk:  # Add the last chunk
-                chunks.append(current_chunk)
+    def extract_structured_info(self, content: str) -> Dict[str, any]:
+        """Extract structured information from content."""
+        info = {
+            "dates": [],
+            "numbers": [],
+            "entities": [],
+            "key_points": []
+        }
 
-            return chunks
+        # Extract dates using regex
+        date_pattern = r'\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4}\b'
+        info["dates"] = re.findall(date_pattern, content)
 
-    async def generate_partial_response(
-        self,
-        user_query: str,
-        summaries_chunk: List[Dict],
-        previous_response: str = ""
-    ) -> str:
-        prompt = f"""Based on these summaries, continue answering: "{user_query}"
+        # Extract numbers and statistics
+        number_pattern = r'\b\d+(?:,\d{3})*(?:\.\d+)?(?:\s*(?:percent|million|billion|trillion))?\b'
+        info["numbers"] = re.findall(number_pattern, content)
 
-        Previous response: {previous_response}
+        # Extract potential key points (sentences with important indicators)
+        sentences = re.split(r'[.!?]+', content)
+        info["key_points"] = [s.strip() for s in sentences if any(indicator in s.lower() for indicator in
+                            ["important", "significant", "key", "main", "crucial", "essential"])]
 
-        Additional Information:
-        {json.dumps(summaries_chunk, indent=2)}
+        return info
 
-        Instructions:
-        1. Continue the response naturally
-        2. Use [n] to cite sources
-        3. Be concise and relevant
-        4. If this is a continuation, make it flow smoothly"""
-
-        return await self.llm_client.complete(prompt)
-
-
-
-    async def enhance_response(
-            self,
-            user_query: str,
-            context: list = None
-        ) -> AsyncGenerator[str, None]:
+    async def process_search_results(self, results: List[Dict], query: str) -> List[Dict]:
+        """Process search results in parallel with relevance scoring."""
+        async def process_result(result):
             try:
-                yield "*🔍 Initiating web search...*\n\n"
+                if result.url in self.content_cache:
+                    content = self.content_cache[result.url]
+                else:
+                    content = await fetch_webpage_content(result.url)
+                    if content:
+                        self.content_cache[result.url] = content
 
-                # Generate search queries with improved prompt
-                search_prompt = f"""Generate 2-3 specific search queries to find accurate information about: {user_query}
-                Format: Return only a JSON array of focused, targeted queries.
-                Make queries specific and factual."""
+                if not content:
+                    return None
 
-                search_queries = await generate_search_queries(self.llm_client, user_query)
-                yield "*📝 Search queries generated:*\n" + "\n".join(f"- `{q}`" for q in search_queries) + "\n\n"
+                # Calculate relevance score
+                relevance = await self.calculate_relevance_score(content, query)
 
-                all_references = []
-                processed_urls = set()
+                # Extract structured information
+                structured_info = self.extract_structured_info(content)
 
-                # Process each search query
-                for query in search_queries[:3]:
-                    yield f"*🌐 Searching web for:* `{query}`\n"
+                return {
+                    "url": result.url,
+                    "title": result.title,
+                    "content": content,
+                    "relevance": relevance,
+                    "structured_info": structured_info,
+                    "domain": urlparse(result.url).netloc
+                }
+            except Exception as e:
+                logger.error(f"Error processing result {result.url}: {str(e)}")
+                return None
 
-                    results = await retry_with_backoff(
-                        search_duckduckgo,
-                        query,
-                        max_retries=2,
-                        initial_delay=1,
-                        max_results=3
-                    )
+        tasks = [process_result(result) for result in results]
+        processed_results = await asyncio.gather(*tasks)
 
-                    if not results:
-                        yield f"*⚠️ No results found for:* `{query}`\n"
+        # Filter out None results and sort by relevance
+        valid_results = [r for r in processed_results if r is not None]
+        return sorted(valid_results, key=lambda x: x["relevance"], reverse=True)
+
+    async def enhance_response(self, user_query: str, context: list = None) -> AsyncGenerator[str, None]:
+        try:
+            yield "*🔍 Initiating web search...*\n\n"
+
+            # Generate search queries
+            search_queries = await generate_search_queries(self.llm_client, user_query)
+            for query in search_queries:
+                yield f"- `{query}`\n"
+                await asyncio.sleep(0.05)
+
+            yield "\n"
+
+            all_references = []
+            processed_urls = set()
+
+            for query in search_queries[:3]:
+                yield f"*🌐 Searching: {query}*\n"
+                await asyncio.sleep(0.2)
+
+                results = await retry_with_backoff(
+                    search_duckduckgo,
+                    query,
+                    max_retries=2,
+                    initial_delay=1,
+                    max_results=3
+                )
+
+                if not results:
+                    yield f"No results found for this query.\n"
+                    continue
+
+                for result in results:
+                    if result.url in processed_urls:
                         continue
 
-                    # Process results
-                    for result in results:
-                        if result.url in processed_urls:
+                    processed_urls.add(result.url)
+                    yield f"*📄 Reading:* [{result.title}]({result.url})\n"
+
+                    try:
+                        content = await fetch_webpage_content(result.url)
+                        if not content:
                             continue
 
-                        processed_urls.add(result.url)
-                        yield f"*📄 Reading:* [{result.title}]({result.url})\n"
+                        ref_id = len(all_references) + 1
+                        all_references.append({
+                            "id": ref_id,
+                            "title": result.title,
+                            "url": result.url
+                        })
 
-                        try:
-                            content = await fetch_webpage_content(result.url)
-                            if not content:
-                                continue
+                        yield f"\n*💡 Key information [{ref_id}]:*\n"
 
-                            ref_id = len(all_references) + 1
-                            all_references.append({
-                                "id": ref_id,
-                                "title": result.title,
-                                "url": result.url
-                            })
+                        summary_prompt = f"""Summarize this content about "{user_query}".
+                        Write in Markdown format with proper sections and formatting.
 
-                            # Stream the summary generation
-                            summary_prompt = f"""Based on this content, provide relevant information about "{user_query}".
-                            Content: {content[:self.max_content_length]}
+                        Requirements:
+                        - Use proper Markdown headings (##, ###)
+                        - Break into clear sections
+                        - Use bullet points where appropriate
+                        - Maintain proper Markdown formatting
+                        - Be precise and factual
+                        - Focus on key information"""
 
-                            Instructions:
-                            - Focus on facts and accuracy
-                            - Be concise but informative
-                            - Include relevant numbers, dates, or statistics if present
-                            - Start with the most important information"""
+                        # Stream by Markdown blocks
+                        buffer = ""
+                        markdown_block = ""
 
-                            yield f"\n*💡 Key information [{ref_id}]:*\n"
-
-                            async for chunk in self.llm_client.stream_complete(
+                        async for chunk in self.stream_markdown_content(
+                            self.llm_client.stream_complete(
                                 summary_prompt,
-                                system_prompt="You are a precise and factual research assistant. Provide clear, accurate information."
-                            ):
-                                yield chunk
+                                system_prompt="You are a precise research assistant. Format responses in clear, well-structured Markdown."
+                            )
+                        ):
+                            yield chunk
 
-                            yield "\n\n"
+                            # Look for complete Markdown blocks or sentences
+                            while True:
+                                # Check for Markdown headings
+                                heading_match = re.search(r'^(#{1,6}[^#\n]+)\n', buffer)
+                                if heading_match:
+                                    end = heading_match.end()
+                                    yield buffer[:end]
+                                    buffer = buffer[end:]
+                                    continue
 
-                        except Exception as e:
-                            logger.error(f"Error processing result: {str(e)}")
+                                # Check for bullet points
+                                bullet_match = re.search(r'^([*-]\s+[^\n]+)\n', buffer)
+                                if bullet_match:
+                                    end = bullet_match.end()
+                                    yield buffer[:end]
+                                    buffer = buffer[end:]
+                                    continue
+
+                                # Check for complete sentences
+                                sentence_match = re.search(r'([.!?])\s+(?=[A-Z])', buffer)
+                                if sentence_match:
+                                    end = sentence_match.end()
+                                    yield buffer[:end]
+                                    buffer = buffer[end:]
+                                    continue
+
+                                break
+
+                            await asyncio.sleep(0.02)
+
+                        if buffer:  # Flush remaining content
+                            yield buffer
+
+                        yield "\n\n"
+
+                    except Exception as e:
+                        logger.error(f"Error processing result: {str(e)}")
+                        continue
+
+            if all_references:
+                yield "\n*🎯 Final Analysis:*\n"
+
+                conclusion_prompt = f"""Provide a comprehensive answer about "{user_query}" based on the gathered information.
+                Write in Markdown format with proper sections.
+
+                Requirements:
+                - Use proper Markdown headings
+                - Break into clear sections
+                - Use bullet points where appropriate
+                - Cite sources using [n]
+                - Maintain proper formatting
+                - Be clear and precise"""
+
+                # Stream by Markdown blocks
+                buffer = ""
+                async for chunk in self.stream_markdown_content(
+                    self.llm_client.stream_complete(
+                        conclusion_prompt,
+                        system_prompt="You are an expert analyst. Format responses in clear, well-structured Markdown."
+                    )
+                ):
+                    yield chunk
+
+                    # Look for complete Markdown blocks or sentences
+                    while True:
+                        # Check for Markdown headings
+                        heading_match = re.search(r'^(#{1,6}[^#\n]+)\n', buffer)
+                        if heading_match:
+                            end = heading_match.end()
+                            yield buffer[:end]
+                            buffer = buffer[end:]
                             continue
 
-                # Generate final conclusion
-                if all_references:
-                    yield "\n*🎯 Final Analysis:*\n"
+                        # Check for bullet points
+                        bullet_match = re.search(r'^([*-]\s+[^\n]+)\n', buffer)
+                        if bullet_match:
+                            end = bullet_match.end()
+                            yield buffer[:end]
+                            buffer = buffer[end:]
+                            continue
 
-                    conclude_prompt = f"""Based on all the gathered information, provide a comprehensive answer about "{user_query}".
+                        # Check for complete sentences
+                        sentence_match = re.search(r'([.!?])\s+(?=[A-Z])', buffer)
+                        if sentence_match:
+                            end = sentence_match.end()
+                            yield buffer[:end]
+                            buffer = buffer[end:]
+                            continue
 
-                    Requirements:
-                    - Synthesize information from all sources
-                    - Be clear and authoritative
-                    - Cite sources using [n] notation
-                    - Address the original question directly
-                    - Include relevant facts and context"""
+                        break
 
-                    async for chunk in self.llm_client.stream_complete(
-                        conclude_prompt,
-                        system_prompt="You are an expert analyst. Provide clear, well-structured conclusions."
-                    ):
-                        yield chunk
+                    await asyncio.sleep(0.02)
 
-                    yield "\n\n---\n*📚 Sources:*\n" + "\n".join(
-                        f"[{ref['id']}] [{ref['title']}]({ref['url']})"
-                        for ref in all_references
-                    )
+                if buffer:
+                    yield buffer
+
+                # Add references
+                yield "\n\n---\n*📚 Sources:*\n"
+                for ref in all_references:
+                    yield f"[{ref['id']}] [{ref['title']}]({ref['url']})\n"
+                    await asyncio.sleep(0.1)
+            else:
+                yield "\n\n*⚠️ No relevant information found. Try rephrasing your question.*"
+
+        except Exception as e:
+            logger.error(f"Error in enhance_response: {traceback.format_exc()}")
+            yield f"*❌ Error: {str(e)}*"
+
+    def create_summary_prompt(self, query: str, result: Dict) -> str:
+        """Create an optimized summary prompt using structured information."""
+        return f"""Summarize the relevant information about "{query}" from this source.
+
+    Content: {result['content'][:self.max_content_length]}
+
+    Key Data Points:
+    - Dates mentioned: {', '.join(result['structured_info']['dates'][:3])}
+    - Key statistics: {', '.join(result['structured_info']['numbers'][:3])}
+    - Important points: {'; '.join(result['structured_info']['key_points'][:3])}
+
+    Format your response with proper Markdown spacing and structure:
+
+    ## Main Topic
+
+    Provide a brief overview here.
+
+    ### Key Points
+
+    - First important point
+    - Second important point
+    - Third important point
+
+    ### Details
+
+    Add detailed information here with proper paragraphs.
+
+    Requirements:
+    - Add empty lines between sections
+    - Use proper heading hierarchy
+    - Include bullet points with proper spacing
+    - Format dates and numbers clearly
+    - Use emphasis where appropriate
+    - Start with most important information
+    """
+
+    def create_conclusion_prompt(self, query: str, references: List[Dict]) -> str:
+        """Create an optimized conclusion prompt using all gathered information."""
+        structured_summary = self.summarize_structured_info(references)
+
+        return f"""Provide a comprehensive answer about "{query}" based on all sources.
+
+    {structured_summary}
+
+    Format your response following this structure:
+
+    ## Overview
+
+    Provide a concise introduction here.
+
+    ### Key Findings
+
+    - Important finding one [n]
+    - Important finding two [n]
+    - Important finding three [n]
+
+    ### Detailed Analysis
+
+    Break down the main points here with proper citations [n].
+
+    ### Additional Context
+
+    Add any relevant context or background information.
+
+    ### Conclusion
+
+    Summarize the key takeaways.
+
+    Requirements:
+    - Add empty lines between sections
+    - Use consistent heading levels
+    - Include proper citations [n]
+    - Use bullet points with spacing
+    - Format dates and numbers clearly
+    - Break paragraphs for readability
+    """
+
+    def summarize_structured_info(self, references: List[Dict]) -> str:
+        """Summarize structured information from all references."""
+        all_dates = []
+        all_numbers = []
+        all_key_points = []
+
+        for ref in references:
+            info = ref["structured_info"]
+            all_dates.extend(info["dates"])
+            all_numbers.extend(info["numbers"])
+            all_key_points.extend(info["key_points"])
+
+        return f"""
+- Timeline: {', '.join(sorted(set(all_dates[:5])))}
+- Key Statistics: {', '.join(set(all_numbers[:5]))}
+- Main Points: {'; '.join(set(all_key_points[:3]))}
+- Sources: {', '.join(set(ref['domain'] for ref in references))}"""
+
+    def format_references(self, references: List[Dict]) -> str:
+        """Format references with additional metadata."""
+        return "\n".join(
+            f"[{ref['id']}] [{ref['title']}]({ref['url']}) - {ref['domain']}"
+            for ref in references
+        )
+
+    async def handle_markdown_streaming(self, buffer: str) -> tuple[str, str]:
+        """Handle markdown streaming with smoother output"""
+        # Handle special Markdown elements first
+        patterns = [
+            # Headers
+            (r'^(#{1,6}\s+[^\n]+)\n', '\n\n'),
+            # Bullet points
+            (r'^([*-]\s+[^\n]+)\n', '\n'),
+            # Code blocks
+            (r'^(```[^\n]*\n[\s\S]*?```)\n', '\n\n'),
+            # Blockquotes
+            (r'^(>\s+[^\n]+)\n', '\n'),
+        ]
+
+        for pattern, spacing in patterns:
+            match = re.search(pattern, buffer)
+            if match:
+                end = match.end()
+                content = buffer[:end] + spacing
+                return content, buffer[end:]
+
+        # If no special elements, try to break at natural points
+        natural_breaks = [
+            # End of sentence followed by space and capital letter
+            r'([.!?])\s+(?=[A-Z])',
+            # Comma followed by space
+            r'(,)\s+',
+            # Natural word breaks
+            r'(\s+)'
+        ]
+
+        for pattern in natural_breaks:
+            match = re.search(pattern, buffer)
+            if match:
+                end = match.end()
+                return buffer[:end], buffer[end:]
+
+        # If buffer is getting too long without breaks, force a break at a space
+        if len(buffer) > 50:  # Adjust this threshold as needed
+            space_idx = buffer.rfind(' ')
+            if space_idx > 0:
+                return buffer[:space_idx+1], buffer[space_idx+1:]
+
+        return "", buffer
+
+    async def stream_markdown_content(self, content_generator):
+        """Stream content with smoother output"""
+        buffer = ""
+        last_yield_time = asyncio.get_event_loop().time()
+        min_chunk_size = 10  # Minimum characters to yield
+        max_delay = 0.05  # Maximum time to hold content
+
+        async for chunk in content_generator:
+            buffer += chunk
+            current_time = asyncio.get_event_loop().time()
+
+            # Process buffer if it's long enough or enough time has passed
+            while buffer:
+                output, new_buffer = await self.handle_markdown_streaming(buffer)
+
+                if output:
+                    # For very small chunks, accumulate more unless too much time has passed
+                    if len(output) < min_chunk_size and (current_time - last_yield_time) < max_delay:
+                        buffer = output + new_buffer
+                        continue
+
+                    # Yield the output
+                    yield output
+                    buffer = new_buffer
+                    last_yield_time = current_time
+
+                    # Small delay for natural flow
+                    await asyncio.sleep(0.01)
                 else:
-                    yield "\n\n*⚠️ No relevant information found. Try rephrasing your question.*"
+                    break
 
-            except Exception as e:
-                logger.error(f"Error in enhance_response: {traceback.format_exc()}")
-                yield f"*❌ Error: {str(e)}*"
+            # Don't hold content for too long
+            if buffer and (current_time - last_yield_time) > max_delay:
+                words = buffer.split()
+                if len(words) > 1:
+                    yield words[0] + " "
+                    buffer = " ".join(words[1:])
+                    last_yield_time = current_time
+
+        # Flush any remaining content
+        if buffer:
+            yield buffer
