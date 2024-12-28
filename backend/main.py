@@ -319,7 +319,7 @@ async def chat_with_web(chat_message: ChatMessage):
                     {"role": "user", "content": msg.user_input}
                     for msg in db_inner.query(Conversation).filter(
                         Conversation.session_id == session_id
-                    ).order_by(Conversation.timestamp.desc()).limit(3)
+                    ).order_by(Conversation.timestamp.desc()).limit(5)
                 ]
 
                 # Get the response generator

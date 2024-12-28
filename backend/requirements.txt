@@ -13,3 +13,4 @@ brotli
 trafilatura
 readability-lxml
 html2text
+httpx[http2]

@@ -3,7 +3,8 @@
     import { fade } from "svelte/transition";
 
     export let show = false;
-
+    const MAX_TOKENS = 128000;
+    const TOKEN_STEP = 1024; // Step by 1k tokens
     let localSettings;
     $: localSettings = { ...$modelSettings };
 
@@ -19,13 +20,20 @@
 
     function handleMaxTokens(event) {
         const value = parseInt(event.target.value);
-        localSettings.max_tokens = Math.max(1, Math.min(4096, value));
+        localSettings.max_tokens = Math.max(1, Math.min(MAX_TOKENS, value));
     }
 
     function handleModalClick(event) {
         if (event.target.classList.contains("settings-modal")) {
             show = false;
         }
+    }
+
+    function formatTokens(value) {
+        if (value >= 1000) {
+            return `${(value / 1000).toFixed(1)}k`;
+        }
+        return value.toString();
     }
 </script>
 
@@ -84,18 +92,22 @@
 
         <div class="setting-group">
             <label for="max_tokens">
-                Max Tokens: {localSettings.max_tokens}
+                Max Output Tokens: {formatTokens(localSettings.max_tokens)}
                 <span class="hint">Maximum length of response</span>
             </label>
             <input
                 type="range"
                 id="max_tokens"
-                min="1"
-                max="4096"
-                step="1"
+                min="1024"
+                max={MAX_TOKENS}
+                step={TOKEN_STEP}
                 value={localSettings.max_tokens}
                 on:input={handleMaxTokens}
             />
+            <div class="range-labels">
+                <span>1k</span>
+                <span>{formatTokens(MAX_TOKENS)}</span>
+            </div>
         </div>
 
         <div class="setting-group">
