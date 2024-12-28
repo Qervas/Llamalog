@@ -28,3 +28,14 @@ class Conversation(Base):
 
     # Relationship with session
     session: Mapped["Session"] = relationship("Session", back_populates="conversations")
+
+class Artifact(Base):
+    __tablename__ = "artifacts"
+
+    id: Mapped[str] = mapped_column(String(50), primary_key=True)
+    content: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(String(255))
+    type_desc: Mapped[str] = mapped_column(String(255))
+    language: Mapped[str] = mapped_column(String(50))
+    size: Mapped[str] = mapped_column(String(50))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

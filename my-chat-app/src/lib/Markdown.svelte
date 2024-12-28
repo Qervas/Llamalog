@@ -175,46 +175,73 @@
         return "text";
     }
 
-    function updateArtifact(id, content, lang) {
-        artifacts.update((state) => {
-            // Create a more unique title
-            const timestamp = new Date().toLocaleTimeString();
-            const title = `${lang || "text"} snippet - ${timestamp}`;
-
-            const items = state.items.map((item) =>
-                item.id === id
-                    ? {
-                          ...item,
-                          content,
-                          title,
-                          language: lang || "text",
-                          size: `${content.split("\n").length} lines`,
-                      }
-                    : item,
+    async function updateArtifact(id, content, lang) {
+        try {
+            const response = await fetch(
+                "http://localhost:8000/generate_title",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        content: content,
+                        language: lang || "text",
+                    }),
+                },
             );
 
-            if (!items.find((item) => item.id === id)) {
-                items.push({
-                    id,
-                    type: "code",
-                    title,
-                    content,
-                    language: lang || "text",
-                    size: `${content.split("\n").length} lines`,
-                });
+            if (!response.ok) {
+                throw new Error("Failed to generate title");
             }
 
-            const currentArtifact =
-                state.currentArtifact?.id === id
-                    ? items.find((item) => item.id === id)
-                    : state.currentArtifact;
+            const { title, type_desc } = await response.json();
 
-            return {
-                ...state,
-                items,
-                currentArtifact,
+            // Create artifact data
+            const artifactData = {
+                id,
+                content,
+                title,
+                type_desc,
+                language: lang || "text",
+                size: `${content.split("\n").length} lines`,
             };
-        });
+
+            artifacts.update((state) => ({
+                ...state,
+                items: [
+                    ...state.items.filter((item) => item.id !== id),
+                    artifactData,
+                ],
+                currentArtifact:
+                    state.currentArtifact?.id === id
+                        ? artifactData
+                        : state.currentArtifact,
+            }));
+        } catch (error) {
+            console.error("Error generating title:", error);
+            // Use fallback title
+            const fallbackData = {
+                id,
+                content,
+                title: `${lang || "text"} snippet`,
+                type_desc: "Code snippet",
+                language: lang || "text",
+                size: `${content.split("\n").length} lines`,
+            };
+
+            artifacts.update((state) => ({
+                ...state,
+                items: [
+                    ...state.items.filter((item) => item.id !== id),
+                    fallbackData,
+                ],
+                currentArtifact:
+                    state.currentArtifact?.id === id
+                        ? fallbackData
+                        : state.currentArtifact,
+            }));
+        }
     }
 
     // Initialize markdown-it with necessary configurations

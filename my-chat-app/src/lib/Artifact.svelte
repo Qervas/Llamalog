@@ -6,20 +6,49 @@
 
     let clipboard;
 
-    onMount(() => {
-        clipboard = new ClipboardJS(".copy-button");
+    // @ts-ignore
+    onMount(async () => {
+        // Load saved artifacts
+        try {
+            const response = await fetch("http://localhost:8000/artifacts");
+            if (response.ok) {
+                const savedArtifacts = await response.json();
+                artifacts.update((state) => ({
+                    ...state,
+                    items: savedArtifacts,
+                }));
+            }
+        } catch (error) {
+            console.error("Failed to load artifacts:", error);
+        }
+
+        // Initialize clipboard
+        clipboard = new ClipboardJS(".copy-button", {
+            text: function (trigger) {
+                // Get the content from the current artifact
+                const artifactId = trigger.getAttribute("data-artifact-id");
+                const artifact = $artifacts.items.find(
+                    (item) => item.id === artifactId,
+                );
+                return artifact ? artifact.content : "";
+            },
+        });
+
         clipboard.on("success", (e) => {
-            const textSpan = e.trigger.querySelector(".copy-text");
-            const originalText = textSpan.textContent;
-            textSpan.textContent = "Copied!";
+            const button = e.trigger;
+            button.classList.add("copied");
+            const span = button.querySelector(".copy-text");
+            const originalText = span.textContent;
+            span.textContent = "Copied!";
+
             setTimeout(() => {
-                textSpan.textContent = originalText;
+                button.classList.remove("copied");
+                span.textContent = originalText;
             }, 2000);
-            e.clearSelection();
         });
 
         return () => {
-            clipboard.destroy();
+            if (clipboard) clipboard.destroy();
         };
     });
 
@@ -111,7 +140,12 @@
                                 {/if}
                             </div>
                             <div class="artifact-info">
-                                <div class="artifact-title">{item.title}</div>
+                                <div class="artifact-title">
+                                    {item.title}
+                                    <span class="artifact-type"
+                                        >{item.type_desc}</span
+                                    >
+                                </div>
                                 <div class="artifact-meta">
                                     {item.type} • {item.size}
                                 </div>
@@ -134,8 +168,7 @@
                         </div>
                         <button
                             class="copy-button"
-                            data-clipboard-text={$artifacts.currentArtifact
-                                .content}
+                            data-artifact-id={$artifacts.currentArtifact.id}
                         >
                             <svg
                                 viewBox="0 0 24 24"
@@ -152,13 +185,16 @@
                             <span class="copy-text">Copy</span>
                         </button>
                     </div>
-                    <pre
-                        class="language-{$artifacts.currentArtifact
-                            .language}"><code
-                            class="language-{$artifacts.currentArtifact
-                                .language}"
-                            >{$artifacts.currentArtifact.content}</code
-                        ></pre>
+                    <div class="code-container">
+                        <div class="line-numbers">
+                            {#each $artifacts.currentArtifact.content.split("\n") as _, i}
+                                <span class="line-number">{i + 1}</span>
+                            {/each}
+                        </div>
+                        <pre class="code-content"><code
+                                >{$artifacts.currentArtifact.content}</code
+                            ></pre>
+                    </div>
                 {:else}
                     <div class="no-selection">
                         <p>Select an artifact to view its content</p>
@@ -288,9 +324,10 @@
 
     .artifact-content {
         padding: 1.5rem;
-        overflow-y: auto;
+        overflow: hidden;
         display: flex;
         flex-direction: column;
+        height: 100%;
     }
 
     .content-header {
@@ -317,6 +354,7 @@
         background: var(--button-background);
         color: var(--text-primary);
         font-size: 0.875rem;
+        transition: all 0.2s ease;
     }
 
     .copy-button svg {
@@ -324,19 +362,60 @@
         height: 16px;
     }
 
-    pre {
-        margin: 0;
-        padding: 1rem;
-        background: var(--code-background);
-        border-radius: 6px;
-        overflow-x: auto;
-        flex: 1;
+    .copy-button:hover {
+        background: var(--background-secondary);
+        border-color: var(--accent-primary);
     }
 
-    code {
-        font-family: "Fira Code", monospace;
+    .copy-button.copied {
+        background: var(--accent-primary);
+        color: white;
+    }
+
+    .code-container {
+        display: flex;
+        background: var(--code-background);
+        border-radius: 6px;
+        overflow: hidden;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+            monospace;
         font-size: 0.875rem;
-        color: var(--code-text);
+        line-height: 1.5;
+        flex: 1;
+        min-height: 0;
+    }
+
+    .line-numbers {
+        padding: 1rem 0.5rem;
+        border-right: 1px solid var(--input-border);
+        background: var(--background-secondary);
+        user-select: none;
+        text-align: right;
+        color: var(--text-secondary);
+    }
+
+    .line-number {
+        display: block;
+        padding: 0 0.5rem;
+        opacity: 0.5;
+        font-size: 0.75rem;
+    }
+
+    .code-content {
+        margin: 0;
+        padding: 1rem;
+        background: transparent;
+        color: var(--text-primary);
+        overflow: auto;
+        flex: 1;
+        min-width: 0;
+    }
+
+    pre,
+    code {
+        font-family: inherit;
+        background: transparent;
+        color: inherit;
     }
 
     .no-selection {

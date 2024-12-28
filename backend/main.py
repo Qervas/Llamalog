@@ -8,10 +8,16 @@ from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from pydantic import BaseModel
-from db_models import Base, Conversation, Session
+from db_models import Base, Conversation, Session, Artifact
 from typing import Optional
 from file_processor import process_file
+from utils import generate_snippet_title
+from pydantic import BaseModel
 
+
+class TitleRequest(BaseModel):
+    content: str
+    language: str
 
 app = FastAPI()
 
@@ -132,6 +138,51 @@ async def upload_file(file: UploadFile = File(...)):
         "filename": file.filename,
         "content": content
     }
+
+@app.post("/generate_title")
+async def generate_title(request: TitleRequest):
+    try:
+        title, type_desc = generate_snippet_title(request.content, request.language)
+        return {"title": title, "type_desc": type_desc}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/artifacts")
+async def create_artifact(artifact_data: dict):
+    db = SessionLocal()
+    try:
+        artifact = Artifact(
+            id=artifact_data["id"],
+            content=artifact_data["content"],
+            title=artifact_data["title"],
+            type_desc=artifact_data["type_desc"],
+            language=artifact_data["language"],
+            size=artifact_data["size"]
+        )
+        db.add(artifact)
+        db.commit()
+        return {"message": "Artifact saved successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+@app.get("/artifacts")
+async def get_artifacts():
+    db = SessionLocal()
+    try:
+        artifacts = db.query(Artifact).order_by(Artifact.created_at.desc()).all()
+        return [{
+            "id": art.id,
+            "title": art.title,
+            "type_desc": art.type_desc,
+            "language": art.language,
+            "content": art.content,
+            "size": art.size
+        } for art in artifacts]
+    finally:
+        db.close()
 
 @app.post("/chat")
 async def chat(chat_message: ChatMessage):
