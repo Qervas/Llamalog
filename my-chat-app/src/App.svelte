@@ -2,6 +2,8 @@
     import { onMount } from "svelte";
     import { fade } from "svelte/transition";
     import Markdown from "./lib/Markdown.svelte";
+    import { modelSettings } from "./lib/stores";
+    import ModelSettings from "./lib/ModelSettings.svelte";
 
     let message = "";
     let chatHistory = [];
@@ -14,7 +16,11 @@
     let editingSessionId = null;
     let editingTitle = "";
     let shouldAutoScroll = true;
+    let showSettings = false;
+    export let show = false;
 
+    let localSettings;
+    $: localSettings = { ...$modelSettings };
     async function createNewSession() {
         try {
             const response = await fetch("http://localhost:8000/sessions", {
@@ -118,6 +124,7 @@
                 body: JSON.stringify({
                     message: userMessage,
                     session_id: currentSessionId,
+                    settings: $modelSettings,
                 }),
             });
 
@@ -176,6 +183,14 @@
     function startEditing(session) {
         editingSessionId = session.id;
         editingTitle = session.title;
+    }
+
+    function updateSettings() {
+        modelSettings.set({
+            ...localSettings,
+            stream: true,
+        });
+        show = false;
     }
 
     async function saveTitle(session) {
@@ -346,6 +361,26 @@
                 </svg>
             </button>
             <h1>AI Assistant</h1>
+            <!-- svelte-ignore a11y_consider_explicit_label -->
+            <button
+                class="settings-button"
+                on:click={() => (showSettings = true)}
+            >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                    />
+                    <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2"
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                </svg>
+            </button>
         </header>
 
         <main>
@@ -423,6 +458,7 @@
             </div>
         </main>
     </div>
+    <ModelSettings bind:show={showSettings} />
 </div>
 
 <style>
@@ -557,7 +593,10 @@
 
     header {
         background: #fff;
+        display: flex;
         padding: 1rem;
+        align-items: center;
+        justify-content: space-between;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         z-index: 1;
     }
@@ -822,7 +861,7 @@
         scrollbar-color: #565869 #202123;
     }
 
-    /* Add these new styles for custom scrollbar in sessions-list */
+    /* styles for custom scrollbar in sessions-list */
     .sessions-list::-webkit-scrollbar {
         width: 6px;
     }
@@ -838,5 +877,16 @@
 
     .sessions-list::-webkit-scrollbar-thumb:hover {
         background: #666;
+    }
+
+    .settings-button {
+        padding: 0.5rem;
+        background: transparent;
+        color: #333;
+    }
+
+    .settings-button svg {
+        width: 24px;
+        height: 24px;
     }
 </style>

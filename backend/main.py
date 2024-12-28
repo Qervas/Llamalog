@@ -31,6 +31,7 @@ SessionLocal = sessionmaker(bind=engine)
 class ChatMessage(BaseModel):
     message: str
     session_id: Optional[int] = None
+    settings: Optional[dict] = None
 
 class SessionCreate(BaseModel):
     title: str = "New Chat"
@@ -156,6 +157,13 @@ async def chat(chat_message: ChatMessage):
         # Add the current message
         messages.append({"role": "user", "content": chat_message.message})
 
+        settings = chat_message.settings or {
+            "model": "llama-3.2-3b-instruct",
+            "max_tokens": 2048,
+            "temperature": 0.7,
+            "stream": True
+        }
+
         async def stream_response():
             collected_response = []
             db_inner = SessionLocal()
@@ -166,11 +174,8 @@ async def chat(chat_message: ChatMessage):
                         "POST",
                         "http://127.0.0.1:8080/v1/chat/completions",
                         json={
-                            "model": "llama-3.2-3b-instruct",
+                            **settings,
                             "messages": messages,
-                            "max_tokens": 2048,
-                            "temperature": 0.7,
-                            "stream": True
                         },
                         headers={"Content-Type": "application/json"}
                     ) as response:
