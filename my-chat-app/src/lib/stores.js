@@ -15,3 +15,5 @@ export const artifacts = writable({
   currentArtifact: null,
   items: [],
 });
+
+export const currentTheme = writable("light");

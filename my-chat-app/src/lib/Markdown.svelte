@@ -4,7 +4,6 @@
     import katex from "katex";
     import "katex/dist/katex.min.css";
     import Prism from "prismjs";
-    import "prismjs/themes/prism-tomorrow.css";
     // Import necessary Prism languages
     import "prismjs/components/prism-c";
     import "prismjs/components/prism-cpp";
@@ -236,17 +235,14 @@
                 updateArtifact(id, str, normalizedLang);
 
                 return `<div class="code-preview" data-artifact-id="${id}">
-                        <div class="preview-header">
-                            <span class="language">${normalizedLang}</span>
-                            <span class="preview-info">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                                    <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4M10 17l5-5-5-5"/>
-                                    <path d="M15 12H3"/>
-                                </svg>
-                                View full code (${str.split("\n").length} lines)
-                            </span>
-                        </div>
-                    </div>`;
+                    <span class="language">${normalizedLang}</span>
+                    <span class="line-count">${str.split("\n").length} lines</span>
+                    <button class="expand-button" title="View full code">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M15 3h6v6M21 3l-7 7"/>
+                        </svg>
+                    </button>
+                </div>`;
             }
 
             if (normalizedLang !== "text") {
@@ -407,81 +403,20 @@
 </div>
 
 <style>
+    /* Base markdown content styles */
     .markdown-content {
         font-size: 1rem;
         line-height: 1.6;
-        color: #374151;
+        color: var(--text-primary);
         overflow-wrap: break-word;
         min-height: 2rem;
         contain: content;
     }
 
+    /* Typography */
     .markdown-content :global(p) {
         margin: 1.25em 0;
         white-space: pre-wrap;
-    }
-
-    .markdown-content :global(.code-block) {
-        margin: 1.25em 0;
-        background: #1e1e1e;
-        border-radius: 8px;
-        overflow: hidden;
-    }
-
-    .markdown-content :global(.code-header) {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.5rem 1rem;
-        background: #2d2d2d;
-        border-bottom: 1px solid #404040;
-    }
-
-    .markdown-content :global(.code-language) {
-        color: #9ca3af;
-        font-size: 0.875rem;
-        text-transform: uppercase;
-    }
-
-    .markdown-content :global(.copy-button) {
-        padding: 0.25rem 0.75rem;
-        font-size: 0.875rem;
-        color: #e5e7eb;
-        background: #404040;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-
-    .markdown-content :global(.copy-button:hover) {
-        background: #4a4a4a;
-    }
-
-    .markdown-content :global(pre) {
-        margin: 0;
-        padding: 1rem;
-        overflow-x: auto;
-    }
-
-    .markdown-content :global(pre code) {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-            monospace;
-        font-size: 0.875rem;
-        line-height: 1.5;
-        display: block;
-        padding: 0;
-        background: transparent;
-    }
-
-    .markdown-content :global(.inline-code) {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-            monospace;
-        font-size: 0.875em;
-        color: #ef4444;
-        padding: 0.2em 0.4em;
-        background: #f3f4f6;
-        border-radius: 4px;
     }
 
     .markdown-content :global(h1),
@@ -493,7 +428,7 @@
         margin: 1.5em 0 0.5em;
         font-weight: 600;
         line-height: 1.25;
-        color: #111827;
+        color: var(--text-primary);
     }
 
     .markdown-content :global(h1) {
@@ -509,6 +444,16 @@
         font-size: 1em;
     }
 
+    .markdown-content :global(strong) {
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    .markdown-content :global(em) {
+        font-style: italic;
+    }
+
+    /* Lists */
     .markdown-content :global(ul),
     .markdown-content :global(ol) {
         margin: 1em 0;
@@ -519,12 +464,28 @@
         margin: 0.5em 0;
     }
 
+    /* Links */
+    .markdown-content :global(a) {
+        color: var(--accent-primary);
+        text-decoration: none;
+    }
+
+    .markdown-content :global(a:hover) {
+        text-decoration: underline;
+    }
+
+    /* Block elements */
     .markdown-content :global(blockquote) {
         margin: 1.25em 0;
         padding: 0.5em 1em;
-        border-left: 4px solid #e5e7eb;
-        background: #f9fafb;
-        color: #4b5563;
+        border-left: 4px solid var(--markdown-blockquote-border);
+        background: var(--markdown-blockquote-background);
+    }
+
+    .markdown-content :global(hr) {
+        margin: 2em 0;
+        border: none;
+        border-top: 1px solid var(--message-border);
     }
 
     .markdown-content :global(img) {
@@ -533,6 +494,7 @@
         border-radius: 6px;
     }
 
+    /* Tables */
     .markdown-content :global(table) {
         width: 100%;
         margin: 1.25em 0;
@@ -542,36 +504,140 @@
     .markdown-content :global(th),
     .markdown-content :global(td) {
         padding: 0.5em;
-        border: 1px solid #e5e7eb;
+        border: 1px solid var(--input-border);
     }
 
     .markdown-content :global(th) {
-        background: #f9fafb;
+        background: var(--code-background);
         font-weight: 600;
     }
 
-    .markdown-content :global(a) {
-        color: #2563eb;
-        text-decoration: none;
+    /* Code blocks */
+    .markdown-content :global(pre[class*="language-"]),
+    .markdown-content :global(pre) {
+        margin: 0;
+        padding: 1rem;
+        background: var(--code-background);
+        border-radius: 6px;
+        overflow-x: auto;
     }
 
-    .markdown-content :global(a:hover) {
-        text-decoration: underline;
+    .markdown-content :global(code[class*="language-"]),
+    .markdown-content :global(pre code),
+    .markdown-content :global(.inline-code) {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+            monospace;
+        font-size: 0.875rem;
+        line-height: 1.5;
+        background: transparent;
+        color: var(--code-text);
     }
 
-    .markdown-content :global(strong) {
-        font-weight: 600;
-        color: #111827;
+    .markdown-content :global(.inline-code) {
+        padding: 0.2em 0.4em;
+        background: var(--code-background);
+        border-radius: 4px;
     }
 
-    .markdown-content :global(em) {
-        font-style: italic;
+    /* Code preview box */
+    :global(.code-preview) {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.875rem;
+        padding: 0.25rem 0.5rem;
+        margin: 0 0.5rem;
+        border-radius: 4px;
+        background: var(--background-tertiary);
+        color: var(--text-primary);
+        cursor: pointer;
+        transition: all 0.2s ease;
+        vertical-align: middle;
+        border: 1px solid var(--input-border);
     }
 
-    .markdown-content :global(hr) {
-        margin: 2em 0;
+    :global(.code-preview:hover) {
+        border-color: var(--accent-primary);
+        background: var(--background-secondary);
+    }
+
+    :global(.code-preview .preview-header) {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid var(--input-border);
+        background: var(--background-tertiary);
+        color: var(--text-primary);
+    }
+
+    :global(.code-preview .language) {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+            monospace;
+        font-size: 0.875rem;
+        font-weight: 500;
+        color: var(--text-primary);
+        text-transform: uppercase;
+    }
+
+    :global(.code-preview .header-left) {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    :global(.code-preview .file-icon) {
+        width: 16px;
+        height: 16px;
+        stroke: var(--text-secondary);
+        opacity: 0.8;
+    }
+
+    :global(.code-preview .file-info) {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    :global(.code-preview .line-count) {
+        font-size: 0.5rem;
+        color: var(--text-secondary);
+    }
+
+    :global(.code-preview .preview-info) {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: var(--accent-primary);
+        font-size: 0.875rem;
+    }
+
+    :global(.code-preview .preview-info svg) {
+        width: 16px;
+        height: 16px;
+        stroke: currentColor;
+    }
+
+    :global(.code-preview .expand-button) {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.125rem;
+        color: var(--text-secondary);
+        background: transparent;
         border: none;
-        border-top: 1px solid #e5e7eb;
+        border-radius: 3px;
+        transition: all 0.2s ease;
+    }
+
+    :global(.code-preview .expand-button:hover) {
+        color: var(--accent-primary);
+    }
+
+    :global(.code-preview .expand-button svg) {
+        width: 12px;
+        height: 12px;
+        stroke: currentColor;
     }
 
     /* KaTeX styles */
@@ -585,49 +651,66 @@
         overflow-y: hidden;
     }
 
-    /* Fix layout jumping */
-    .markdown-content {
-        min-height: 2rem;
-        contain: content;
+    /* Syntax highlighting */
+    .markdown-content :global(.token.comment),
+    .markdown-content :global(.token.prolog),
+    .markdown-content :global(.token.doctype),
+    .markdown-content :global(.token.cdata) {
+        color: var(--code-comment, #6272a4);
     }
 
-    :global(.code-preview) {
-        border: 1px solid #e0e0e0;
-        border-radius: 6px;
-        margin: 1rem 0;
-        cursor: pointer;
-        transition: background-color 0.2s;
+    .markdown-content :global(.token.punctuation) {
+        color: var(--code-punctuation, #f8f8f2);
     }
 
-    :global(.code-preview:hover) {
-        background-color: #f5f5f5;
+    .markdown-content :global(.token.namespace) {
+        opacity: 0.7;
     }
 
-    :global(.code-preview .preview-header) {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.75rem 1rem;
-        border-bottom: 1px solid #e0e0e0;
+    .markdown-content :global(.token.property),
+    .markdown-content :global(.token.tag),
+    .markdown-content :global(.token.constant),
+    .markdown-content :global(.token.symbol),
+    .markdown-content :global(.token.deleted) {
+        color: var(--code-keyword, #ff79c6);
     }
 
-    :global(.code-preview .language) {
-        font-family: monospace;
-        color: #666;
-        font-size: 0.875rem;
+    .markdown-content :global(.token.boolean),
+    .markdown-content :global(.token.number) {
+        color: var(--code-number, #bd93f9);
     }
 
-    :global(.code-preview .preview-info) {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        color: #2196f3;
-        font-size: 0.875rem;
+    .markdown-content :global(.token.selector),
+    .markdown-content :global(.token.attr-name),
+    .markdown-content :global(.token.string),
+    .markdown-content :global(.token.char),
+    .markdown-content :global(.token.builtin),
+    .markdown-content :global(.token.inserted) {
+        color: var(--code-string, #50fa7b);
     }
 
-    :global(.code-preview .preview-info svg) {
-        width: 16px;
-        height: 16px;
-        stroke: currentColor;
+    .markdown-content :global(.token.operator),
+    .markdown-content :global(.token.entity),
+    .markdown-content :global(.token.url),
+    .markdown-content :global(.language-css .token.string),
+    .markdown-content :global(.style .token.string) {
+        color: var(--code-operator, #f8f8f2);
+    }
+
+    .markdown-content :global(.token.atrule),
+    .markdown-content :global(.token.attr-value),
+    .markdown-content :global(.token.keyword) {
+        color: var(--code-keyword, #ff79c6);
+    }
+
+    .markdown-content :global(.token.function),
+    .markdown-content :global(.token.class-name) {
+        color: var(--code-function, #ffb86c);
+    }
+
+    .markdown-content :global(.token.regex),
+    .markdown-content :global(.token.important),
+    .markdown-content :global(.token.variable) {
+        color: var(--code-variable, #f1fa8c);
     }
 </style>

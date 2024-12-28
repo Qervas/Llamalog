@@ -21,9 +21,20 @@
         const value = parseInt(event.target.value);
         localSettings.max_tokens = Math.max(1, Math.min(4096, value));
     }
+
+    function handleModalClick(event) {
+        if (event.target.classList.contains("settings-modal")) {
+            show = false;
+        }
+    }
 </script>
 
-<div class="settings-modal" class:show transition:fade>
+<div
+    class="settings-modal"
+    class:show
+    transition:fade
+    on:click={handleModalClick}
+>
     <div class="settings-content">
         <h2>Model Settings</h2>
 
@@ -115,7 +126,8 @@
     }
 
     .settings-content {
-        background: white;
+        background: var(--modal-background);
+        color: var(--text-primary);
         padding: 2rem;
         border-radius: 12px;
         width: 90%;
@@ -125,7 +137,7 @@
 
     h2 {
         margin: 0 0 1.5rem;
-        color: #333;
+        color: var(--text-primary);
     }
 
     .setting-group {
@@ -135,7 +147,7 @@
     label {
         display: block;
         margin-bottom: 0.5rem;
-        color: #333;
+        color: var(--text-primary);
         font-weight: 500;
     }
 
@@ -154,9 +166,11 @@
     select {
         width: 100%;
         padding: 0.5rem;
-        border: 1px solid #ddd;
         border-radius: 4px;
         font-size: 1rem;
+        background: var(--input-background);
+        color: var(--text-primary);
+        border: 1px solid var(--input-border);
     }
 
     .buttons {
@@ -175,13 +189,13 @@
     }
 
     .cancel {
-        background: #e0e0e0;
-        color: #333;
+        background: var(--button-background);
+        color: var(--text-primary);
     }
 
     .save {
         background: #2196f3;
-        color: white;
+        color: var(--text-primary);
     }
 
     button:hover {

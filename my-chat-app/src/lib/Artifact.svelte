@@ -2,18 +2,20 @@
     import { artifacts } from "./stores.js";
     import { fade, slide } from "svelte/transition";
     import ClipboardJS from "clipboard";
-    import { onMount } from "svelte";
+    import { onMount, afterUpdate } from "svelte";
 
     let clipboard;
 
     onMount(() => {
         clipboard = new ClipboardJS(".copy-button");
         clipboard.on("success", (e) => {
-            const button = e.trigger;
-            button.textContent = "Copied!";
+            const textSpan = e.trigger.querySelector(".copy-text");
+            const originalText = textSpan.textContent;
+            textSpan.textContent = "Copied!";
             setTimeout(() => {
-                button.textContent = "Copy";
+                textSpan.textContent = originalText;
             }, 2000);
+            e.clearSelection();
         });
 
         return () => {
@@ -35,6 +37,14 @@
             currentArtifact: state.items.find((item) => item.id === id),
         }));
     }
+
+    afterUpdate(() => {
+        if ($artifacts.currentArtifact) {
+            setTimeout(() => {
+                Prism.highlightAll();
+            }, 0);
+        }
+    });
 </script>
 
 {#if $artifacts.visible}
@@ -139,12 +149,14 @@
                                     d="M16 18v2a2 2 0 01-2 2H6a2 2 0 01-2-2V9a2 2 0 012-2h2"
                                 />
                             </svg>
-                            Copy
+                            <span class="copy-text">Copy</span>
                         </button>
                     </div>
                     <pre
                         class="language-{$artifacts.currentArtifact
                             .language}"><code
+                            class="language-{$artifacts.currentArtifact
+                                .language}"
                             >{$artifacts.currentArtifact.content}</code
                         ></pre>
                 {:else}
@@ -164,7 +176,7 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background: rgba(0, 0, 0, 0.3);
+        background: var(--modal-overlay);
         z-index: 1000;
         backdrop-filter: blur(2px);
     }
@@ -176,21 +188,23 @@
         bottom: 0;
         width: 80%;
         max-width: 1200px;
-        background: white;
+        background: var(--modal-background);
+        border-left: 1px solid var(--input-border);
         box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
         display: grid;
         grid-template-columns: 300px 1fr;
+        color: var(--text-primary);
     }
 
     .artifacts-list {
-        border-right: 1px solid #eee;
+        border-right: 1px solid var(--input-border);
         display: flex;
         flex-direction: column;
     }
 
     header {
         padding: 1rem;
-        border-bottom: 1px solid #eee;
+        border-bottom: 1px solid var(--input-border);
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -199,7 +213,7 @@
     h3 {
         margin: 0;
         font-size: 1.2rem;
-        color: #333;
+        color: var(--text-primary);
     }
 
     .close-button {
@@ -207,7 +221,7 @@
         border: none;
         cursor: pointer;
         padding: 0.5rem;
-        color: #666;
+        color: var(--text-primary);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -216,6 +230,10 @@
     .close-button svg {
         width: 20px;
         height: 20px;
+    }
+
+    .close-button:hover {
+        color: var(--text-primary);
     }
 
     .items-list {
@@ -231,21 +249,22 @@
         border-radius: 6px;
         cursor: pointer;
         transition: background 0.2s;
+        background: var(--background-primary);
         gap: 0.75rem;
     }
 
     .artifact-item:hover {
-        background: #f5f5f5;
+        background: var(--hover-background);
     }
 
     .artifact-item.active {
-        background: #e3f2fd;
+        background: var(--active-item-background);
     }
 
     .artifact-icon svg {
         width: 24px;
         height: 24px;
-        color: #666;
+        color: var(--text-primary);
     }
 
     .artifact-info {
@@ -259,11 +278,12 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        color: var(--text-primary);
     }
 
     .artifact-meta {
         font-size: 0.875rem;
-        color: #666;
+        color: var(--text-primary);
     }
 
     .artifact-content {
@@ -283,7 +303,7 @@
     .content-header h4 {
         margin: 0;
         font-size: 1.1rem;
-        color: #333;
+        color: var(--text-primary);
     }
 
     .copy-button {
@@ -291,11 +311,11 @@
         align-items: center;
         gap: 0.5rem;
         padding: 0.5rem 1rem;
-        background: #e3f2fd;
         border: none;
         border-radius: 4px;
         cursor: pointer;
-        color: #1976d2;
+        background: var(--button-background);
+        color: var(--text-primary);
         font-size: 0.875rem;
     }
 
@@ -304,14 +324,10 @@
         height: 16px;
     }
 
-    .copy-button:hover {
-        background: #bbdefb;
-    }
-
     pre {
         margin: 0;
         padding: 1rem;
-        background: #282c34;
+        background: var(--code-background);
         border-radius: 6px;
         overflow-x: auto;
         flex: 1;
@@ -320,7 +336,7 @@
     code {
         font-family: "Fira Code", monospace;
         font-size: 0.875rem;
-        color: #abb2bf;
+        color: var(--code-text);
     }
 
     .no-selection {
@@ -328,7 +344,7 @@
         align-items: center;
         justify-content: center;
         height: 100%;
-        color: #666;
+        color: var(--text-secondary);
     }
 
     .content-info {
@@ -342,7 +358,83 @@
         background: #e2e8f0;
         border-radius: 4px;
         font-size: 0.75rem;
-        color: #475569;
+        background: var(--background-tertiary);
+        color: var(--text-secondary);
         font-family: monospace;
+    }
+
+    :global(pre .token.comment),
+    :global(pre .token.prolog),
+    :global(pre .token.doctype),
+    :global(pre .token.cdata) {
+        color: #8292a2 !important;
+    }
+
+    :global(pre .token.punctuation) {
+        color: #f8f8f2 !important;
+    }
+
+    :global(pre .token.namespace) {
+        opacity: 0.7 !important;
+    }
+
+    :global(pre .token.property),
+    :global(pre .token.tag),
+    :global(pre .token.constant),
+    :global(pre .token.symbol),
+    :global(pre .token.deleted) {
+        color: #ff79c6 !important;
+    }
+
+    :global(pre .token.boolean),
+    :global(pre .token.number) {
+        color: #bd93f9 !important;
+    }
+
+    :global(pre .token.selector),
+    :global(pre .token.attr-name),
+    :global(pre .token.string),
+    :global(pre .token.char),
+    :global(pre .token.builtin),
+    :global(pre .token.inserted) {
+        color: #50fa7b !important;
+    }
+
+    :global(pre .token.operator),
+    :global(pre .token.entity),
+    :global(pre .token.url),
+    :global(pre .language-css .token.string),
+    :global(pre .style .token.string) {
+        color: #f8f8f2 !important;
+    }
+
+    :global(pre .token.atrule),
+    :global(pre .token.attr-value),
+    :global(pre .token.keyword) {
+        color: #ff79c6 !important;
+    }
+
+    :global(pre .token.function),
+    :global(pre .token.class-name) {
+        color: #ffb86c !important;
+    }
+
+    :global(pre .token.regex),
+    :global(pre .token.important),
+    :global(pre .token.variable) {
+        color: #f1fa8c !important;
+    }
+
+    :global(pre .token.important),
+    :global(pre .token.bold) {
+        font-weight: bold !important;
+    }
+
+    :global(pre .token.italic) {
+        font-style: italic !important;
+    }
+
+    :global(pre .token.entity) {
+        cursor: help !important;
     }
 </style>

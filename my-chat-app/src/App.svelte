@@ -2,10 +2,12 @@
     import { onDestroy, onMount } from "svelte";
     import { fade } from "svelte/transition";
     import Markdown from "./lib/Markdown.svelte";
-    import { modelSettings, artifacts } from "./lib/stores";
+    import { modelSettings, artifacts, currentTheme } from "./lib/stores";
     import ModelSettings from "./lib/ModelSettings.svelte";
     import FileUpload from "./lib/FileUpload.svelte";
     import Artifact from "./lib/Artifact.svelte";
+    import ThemeToggle from "./lib/ThemeToggle.svelte";
+    import { themes } from "./lib/theme";
 
     let message = "";
     let chatHistory = [];
@@ -224,7 +226,7 @@
         } catch (error) {
             console.error("Error:", error);
             chatHistory = chatHistory.filter(
-                (msg) => msg.user_input !== userMessage,
+                (msg) => msg.user_input !== message,
             );
             alert("Failed to send message. Please try again.");
         } finally {
@@ -386,6 +388,13 @@
         }
     }
 
+    function applyTheme(themeName) {
+        const theme = themes[themeName];
+        Object.entries(theme).forEach(([property, value]) => {
+            document.documentElement.style.setProperty(property, value);
+        });
+    }
+
     onMount(async () => {
         try {
             const response = await fetch("http://localhost:8000/sessions");
@@ -396,6 +405,9 @@
     });
     onMount(() => {
         textareaElement?.focus();
+        const savedTheme = localStorage.getItem("theme") || "light";
+        currentTheme.set(savedTheme);
+        applyTheme(savedTheme);
     });
 
     onDestroy(() => {
@@ -404,6 +416,9 @@
     });
 
     $: mainContentClass = showSidebar ? "" : "sidebar-collapsed";
+    $: if ($currentTheme) {
+        applyTheme($currentTheme);
+    }
 </script>
 
 <div
@@ -533,6 +548,7 @@
             </button>
             <h1>AI Assistant</h1>
             <div class="header-actions">
+                <ThemeToggle />
                 <button
                     class="artifacts-button"
                     on:click={() =>
@@ -730,19 +746,22 @@
         position: fixed;
         top: 0;
         left: 0;
+        background-color: var(--background-primary);
+        color: var(--text-primary);
     }
 
     .sidebar {
         width: 260px;
-        background: #202123;
-        color: white;
+        background: var(--sidebar-background);
+        color: var(--sidebar-text);
         padding: 1rem;
         display: flex;
         flex-direction: column;
         transition: width 0.3s ease;
         overflow-y: auto;
         height: 100vh;
-        position: fixed;
+        flex-shrink: 0;
+        position: relative;
         left: 0;
         top: 0;
     }
@@ -761,6 +780,7 @@
         flex-direction: column;
         overflow: hidden;
         height: 100vh;
+        margin-left: 0;
     }
 
     .main-content.sidebar-collapsed {
@@ -852,7 +872,8 @@
     }
 
     header {
-        background: #fff;
+        background: var(--background-secondary);
+        color: var(--text-primary);
         display: flex;
         padding: 1rem;
         align-items: center;
@@ -864,7 +885,7 @@
     header h1 {
         margin: 0;
         font-size: 1.5rem;
-        color: #333;
+        color: var(--text-primary);
     }
 
     main {
@@ -893,7 +914,7 @@
 
     .welcome-message {
         text-align: center;
-        color: #666;
+        color: var(--text-primary);
         margin: 2rem 0;
     }
 
@@ -905,7 +926,8 @@
         position: relative;
         flex: 1;
         padding: 1rem;
-        background: white;
+        background: var(--message-background);
+        color: var(--text-primary);
         border-radius: 12px;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         max-width: calc(100% - 60px);
@@ -940,32 +962,36 @@
     }
 
     .input-container {
-        background: white;
+        background: var(--background-secondary);
         padding: 1rem;
         border-radius: 12px;
-        box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 -2px 4px var(--shadow-color);
     }
 
     .input-wrapper {
         display: flex;
         gap: 0.5rem;
         align-items: flex-end;
-        background: white;
         border-radius: 8px;
-        border: 1px solid #e0e0e0;
+        border: 1px solid;
+        background: var(--background-primary);
+        border-color: var(--input-border);
         padding: 0.4rem;
     }
 
     textarea {
         flex: 1;
         padding: 0.8rem;
-        border: 1px solid #e0e0e0;
+        border: 1px solid;
         border-radius: 8px;
         font-size: 1rem;
         resize: none;
         min-height: 20px;
         max-height: 200px;
         font-family: inherit;
+        background: var(--input-background);
+        color: var(--text-primary);
+        border-color: var(--input-border);
     }
 
     textarea:focus {
@@ -973,9 +999,14 @@
         border-color: #2196f3;
     }
 
+    textarea::placeholder {
+        color: var(--text-secondary);
+    }
+
     button {
         padding: 0.8rem;
-        background: #e0e0e0;
+        background: var(--button-background);
+        color: var(--text-primary);
         border: none;
         border-radius: 8px;
         cursor: pointer;
@@ -988,11 +1019,12 @@
     button svg {
         width: 24px;
         height: 24px;
-        color: #666;
+        color: var(--text-secondary);
     }
 
     button.active {
-        background: #2196f3;
+        background: var(--accent-primary);
+        color: white;
     }
 
     button.active svg {
@@ -1153,7 +1185,7 @@
         padding: 0.5rem;
         background: transparent;
         border: none;
-        color: #6b7280;
+        color: var(--text-secondary);
         cursor: pointer;
         transition: color 0.2s;
         display: flex;
@@ -1162,7 +1194,7 @@
     }
 
     .upload-button:hover {
-        color: #2196f3;
+        color: var(--accent-primary);
     }
 
     .upload-button svg {
@@ -1174,9 +1206,10 @@
         display: flex;
         gap: 0.5rem;
         align-items: flex-end;
-        background: white;
+        background: var(--background-secondary);
         border-radius: 8px;
-        border: 1px solid #e0e0e0;
+        border: 1px solid;
+        border-color: var(--input-border);
         padding: 0.4rem;
     }
 
@@ -1260,17 +1293,17 @@
         align-items: center;
         gap: 0.25rem;
         padding: 0.25rem 0.5rem;
-        background: #f3f4f6;
         border-radius: 4px;
         font-size: 0.75rem;
-        color: #374151;
+        background: var(--file-chip-background);
+        color: var(--file-chip-text);
     }
 
     .remove-file {
         padding: 0;
         background: transparent;
         border: none;
-        color: #6b7280;
+        color: var(--text-secondary);
         cursor: pointer;
         font-size: 1rem;
         line-height: 1;
