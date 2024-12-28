@@ -10,3 +10,6 @@ python-multipart
 aiohttp
 beautifulsoup4
 brotli
+trafilatura
+readability-lxml
+html2text

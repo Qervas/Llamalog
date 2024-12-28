@@ -8,6 +8,7 @@ import json
 import logging
 import traceback
 from typing import AsyncGenerator, AsyncIterator
+from .content_extractor import ContentExtractor
 
 
 # Set up logging
@@ -144,24 +145,22 @@ async def fetch_webpage_content(url: str) -> str:
                     return ""
 
                 html = await response.text()
-                soup = BeautifulSoup(html, 'html.parser')
+                content_extractor = ContentExtractor()
+                extracted_content = await content_extractor.extract_content(html, url)
 
-                # Remove unwanted elements
-                for tag in ['script', 'style', 'nav', 'header', 'footer', 'iframe', 'noscript']:
-                    for element in soup.find_all(tag):
-                        element.decompose()
+                # Combine relevant content
+                final_content = []
 
-                # Try to find the main content
-                content = None
-                for selector in ['main', 'article', '#content', '.content', 'body']:
-                    content = soup.select_one(selector)
-                    if content:
-                        break
+                if extracted_content['title']:
+                    final_content.append(f"Title: {extracted_content['title']}")
 
-                if content:
-                    text = content.get_text(separator=' ', strip=True)
-                    return ' '.join(text.split())  # Normalize whitespace
-                return ""
+                if extracted_content['metadata'].get('description'):
+                    final_content.append(f"\nDescription: {extracted_content['metadata']['description']}")
+
+                if extracted_content['main_content']:
+                    final_content.append(f"\nContent:\n{extracted_content['main_content']}")
+
+                return '\n'.join(final_content)
     except Exception as e:
         logger.error(f"Error fetching webpage {url}: {str(e)}")
         return ""
