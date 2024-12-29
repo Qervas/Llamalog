@@ -1,12 +1,60 @@
 <script>
+    import { onMount } from "svelte";
     import { modelSettings } from "./stores.js";
     import { fade } from "svelte/transition";
 
+    let models = [];
+    let error = null;
     export let show = false;
     const MAX_TOKENS = 128000;
-    const TOKEN_STEP = 1024; // Step by 1k tokens
+    const TOKEN_STEP = 128;
+    let loading = false;
     let localSettings;
     $: localSettings = { ...$modelSettings };
+
+    async function loadModels() {
+        try {
+            const response = await fetch("http://localhost:8000/models");
+            if (!response.ok) throw new Error("Failed to fetch models");
+            const data = await response.json();
+            models = data.available_models || [];
+        } catch (e) {
+            error = "Failed to load models list";
+        }
+    }
+    async function loadModel(modelId) {
+        loading = true;
+        error = null;
+        try {
+            const response = await fetch(
+                `http://localhost:8000/models/${modelId}/load`,
+                {
+                    method: "POST",
+                },
+            );
+
+            if (!response.ok) throw new Error("Failed to load model");
+
+            localSettings.model = modelId;
+            await updateSettings();
+        } catch (e) {
+            error = `Failed to load model: ${e.message}`;
+        } finally {
+            loading = false;
+        }
+    }
+
+    async function stopModel() {
+        try {
+            await fetch("http://localhost:8000/models/stop", {
+                method: "POST",
+            });
+            localSettings.model = null;
+            await updateSettings();
+        } catch (e) {
+            error = "Failed to stop model";
+        }
+    }
 
     function updateSettings() {
         modelSettings.set(localSettings);
@@ -35,6 +83,10 @@
         }
         return value.toString();
     }
+
+    onMount(() => {
+        loadModels();
+    });
 </script>
 
 <div
@@ -62,14 +114,49 @@
             >
         </div>
 
+        <!-- Model Selection Section -->
         <div class="setting-group">
-            <label for="model">Model</label>
-            <select id="model" bind:value={localSettings.model}>
-                <option value="llama-3.2-3b-instruct"
-                    >Llama 3.2B Instruct</option
-                >
-                <!-- Add other models as needed -->
-            </select>
+            <h3>Model Selection</h3>
+            <div class="models-list">
+                {#each models as model}
+                    <div
+                        class="model-card"
+                        class:active={model.name === localSettings.model}
+                    >
+                        <div class="model-info">
+                            <h4>{model.name}</h4>
+                            <span class="model-size">{model.size}</span>
+                            {#if model.description}
+                                <p class="model-description">
+                                    {model.description}
+                                </p>
+                            {/if}
+                        </div>
+                        <div class="model-actions">
+                            {#if model.name === localSettings.model}
+                                <button
+                                    class="stop-model"
+                                    on:click={() => stopModel()}
+                                    disabled={loading}
+                                >
+                                    Stop Model
+                                </button>
+                            {:else}
+                                <button
+                                    class="load-model"
+                                    on:click={() => loadModel(model.name)}
+                                    disabled={loading}
+                                >
+                                    Load Model
+                                </button>
+                            {/if}
+                        </div>
+                    </div>
+                {/each}
+            </div>
+            {#if error}
+                <div class="error" transition:fade>{error}</div>
+            {/if}
         </div>
 
         <div class="setting-group">
@@ -287,5 +374,77 @@
         font-size: 0.875rem;
         color: var(--text-secondary);
         margin-top: 0.25rem;
+    }
+
+    .models-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        max-height: 300px;
+        overflow-y: auto;
+        padding: 0.5rem;
+        background: var(--background-primary);
+        border-radius: 4px;
+        border: 1px solid var(--input-border);
+    }
+
+    .model-card {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem;
+        background: var(--background-secondary);
+        border: 1px solid var(--input-border);
+        border-radius: 4px;
+        transition: all 0.2s ease;
+    }
+
+    .model-card.active {
+        border-color: var(--accent-primary);
+        background: var(--active-item-background);
+    }
+
+    .model-info h4 {
+        margin: 0 0 0.25rem;
+    }
+
+    .model-size {
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+    }
+
+    .model-description {
+        font-size: 0.875rem;
+        margin: 0.5rem 0 0;
+        color: var(--text-secondary);
+    }
+
+    .model-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .load-model {
+        background: var(--accent-primary);
+        color: white;
+    }
+
+    .stop-model {
+        background: var(--button-background);
+        color: var(--text-primary);
+    }
+
+    .error {
+        margin-top: 0.5rem;
+        padding: 0.5rem;
+        background: var(--error-background);
+        color: var(--error-text);
+        border-radius: 4px;
+        font-size: 0.875rem;
+    }
+
+    h3 {
+        margin: 0 0 1rem;
+        font-size: 1.1rem;
     }
 </style>

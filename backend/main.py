@@ -15,15 +15,27 @@ from utils.gen_titles import generate_snippet_title
 from pydantic import BaseModel
 from utils.llm_client import LLMClient
 from utils.search import WebSearchEnhancer
+from model_manager import ModelManager
+from config import settings
+from utils.paths import ensure_path
 import logging
+import os
 
 
 class TitleRequest(BaseModel):
     content: str
     language: str
 
-app = FastAPI()
 
+log_dir = ensure_path(settings.DATA_DIR / "logs")
+logging.basicConfig(
+    filename=log_dir / "backend.log",
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+app = FastAPI()
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
@@ -34,13 +46,13 @@ app.add_middleware(
 )
 
 # Database setup
-DATABASE_URL = "sqlite:///./chat_history.db"
-engine = create_engine(DATABASE_URL)
+engine = create_engine(settings.DATABASE_URL)
 Base.metadata.create_all(engine)
 SessionLocal = sessionmaker(bind=engine)
 
 llm_client = LLMClient()
 web_enhancer = WebSearchEnhancer(llm_client, max_tokens_per_chunk=600)
+model_manager = ModelManager()
 
 class ChatMessage(BaseModel):
     message: str
@@ -52,6 +64,65 @@ class SessionCreate(BaseModel):
 
 class SessionUpdate(BaseModel):
     title: str
+
+@app.on_event("startup")
+async def startup_event():
+    """Validate configuration on startup"""
+    try:
+        settings.validate_paths()
+        logger.info(f"Using models directory: {settings.MODELS_DIR}")
+        logger.info(f"Using llama server: {settings.LLAMA_SERVER_PATH}")
+    except Exception as e:
+        logger.error(f"Configuration validation failed: {e}")
+        raise
+
+@app.get("/models")
+async def get_models():
+    """Get list of available models"""
+    logger.debug("Models endpoint called")
+    status = await model_manager.get_model_status()
+    logger.debug(f"Returning status: {status}")
+    return status
+
+@app.post("/models/{model_id}/load")
+async def load_model(model_id: str):
+    """Load a specific model"""
+    try:
+        return await model_manager.load_model(model_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/models/stop")
+async def stop_model():
+    """Stop the current model"""
+    return await model_manager.stop_model()
+
+@app.get("/models/status")
+async def get_model_status():
+    """Get current model status"""
+    return await model_manager.get_model_status()
+
+@app.get("/health")
+async def health_check():
+    """Check health status of the server and model."""
+    try:
+        status = await model_manager.get_current_model()
+        return {
+            "status": "healthy",
+            "model_server": status,
+            "api_server": {
+                "status": "running",
+                "version": "1.0.0"
+            }
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "status": "unhealthy",
+                "error": str(e)
+            }
+        )
 
 @app.post("/sessions")
 async def create_session():
@@ -297,7 +368,6 @@ async def chat(chat_message: ChatMessage):
 
 @app.post("/chat/web")
 async def chat_with_web(chat_message: ChatMessage):
-    logger = logging.getLogger(__name__)
 
     db = SessionLocal()
     try:

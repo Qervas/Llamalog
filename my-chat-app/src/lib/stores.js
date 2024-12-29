@@ -1,7 +1,28 @@
 import { writable } from "svelte/store";
+import { config } from "./config";
+
+export const serverConfig = writable({
+  backendUrl: config.BACKEND_URL,
+  llmServerUrl: config.LLM_SERVER_URL,
+});
+
+export const serverStatus = writable({
+  healthy: false,
+  modelServer: null,
+  apiServer: null,
+  lastCheck: null,
+  error: null,
+});
+
+export const modelState = writable({
+  available: [],
+  current: null,
+  loading: false,
+  error: null,
+});
 
 export const modelSettings = writable({
-  model: "llama-3.2-3b-instruct",
+  model: null,
   max_tokens: 2048,
   temperature: 0.7,
   top_p: 1.0,

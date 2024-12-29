@@ -1,13 +1,22 @@
 <script>
+    // @ts-nocheck
+
     import { onDestroy, onMount } from "svelte";
     import { fade } from "svelte/transition";
     import Markdown from "./lib/Markdown.svelte";
-    import { modelSettings, artifacts, currentTheme } from "./lib/stores";
+    import {
+        modelSettings,
+        artifacts,
+        currentTheme,
+        serverStatus,
+    } from "./lib/stores";
     import ModelSettings from "./lib/ModelSettings.svelte";
     import FileUpload from "./lib/FileUpload.svelte";
     import Artifact from "./lib/Artifact.svelte";
     import ThemeToggle from "./lib/ThemeToggle.svelte";
     import { themes } from "./lib/theme";
+    import ModelSelector from "./lib/ModelSelector.svelte";
+    import ServerStatus from "./lib/ServerStatus.svelte";
 
     let message = "";
     let chatHistory = [];
@@ -126,6 +135,14 @@
     }
 
     async function sendMessage() {
+        if (!$modelSettings.model) {
+            alert("Please load a model first");
+            return;
+        }
+        if (!$serverStatus.healthy) {
+            alert("Server is not responding. Please try again later.");
+            return;
+        }
         if (!message.trim() && !selectedFiles.length) return;
 
         loading = true;
@@ -424,7 +441,6 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
     class="app-container"
     on:dragenter|preventDefault
@@ -464,6 +480,7 @@
     {/if}
     <!-- Sidebar -->
     <aside class="sidebar" class:collapsed={!showSidebar}>
+        <ServerStatus />
         <button class="new-chat" on:click={createNewSession}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                 <path
@@ -598,6 +615,7 @@
                     <div class="welcome-message">
                         <h2>Welcome! 👋</h2>
                         <p>How can I help you today?</p>
+                        <ModelSelector />
                         <FileUpload onFileProcess={handleFileContent} />
                     </div>
                 {/if}
@@ -747,6 +765,14 @@
 </div>
 
 <style>
+    :global(:root) {
+        --success-background: #dcfce7;
+        --success-text: #166534;
+        --warning-background: #fef9c3;
+        --warning-text: #854d0e;
+        --error-background: #fee2e2;
+        --error-text: #991b1b;
+    }
     .app-container {
         display: flex;
         height: 100vh;

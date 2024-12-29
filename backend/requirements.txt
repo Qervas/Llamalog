@@ -14,3 +14,5 @@ trafilatura
 readability-lxml
 html2text
 httpx[http2]
+pydantic[dotenv]
+python-dotenv

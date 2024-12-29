@@ -196,8 +196,10 @@ SAVE='\033[s'
 RESTORE='\033[u'
 CLEAR_LINE='\033[K'
 
+# Get the script's directory (project root)
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
 # Initialize variables
-LLAMA_PID=""
 BACKEND_PID=""
 FRONTEND_PID=""
 START_TIME=$(date +%s)
@@ -207,7 +209,7 @@ print_centered() {
     local text="$1"
     local width=$(tput cols)
     local padding=$(( (width - ${#text}) / 2 ))
-    printf "%${padding}s%s%${padding}s\n" "" "$text" ""
+    echo -e "$(printf '%*s' "$padding" '')${text}$(printf '%*s' "$padding" '')"
 }
 
 # Function to show elapsed time
@@ -228,10 +230,18 @@ countdown() {
     echo -e "\r$message now! ${CLEAR_LINE}"
 }
 
+# Function to check if a directory exists and create it if it doesn't
+ensure_directory() {
+    local dir=$1
+    if [ ! -d "$dir" ]; then
+        echo -e "${BLUE}Creating directory: $dir${NC}"
+        mkdir -p "$dir"
+    fi
+}
+
 # Cleanup function
 cleanup() {
     echo -e "\n\n${YELLOW}Shutting down services...${NC}"
-    [ ! -z "$LLAMA_PID" ] && kill $LLAMA_PID
     [ ! -z "$BACKEND_PID" ] && kill $BACKEND_PID
     [ ! -z "$FRONTEND_PID" ] && kill $FRONTEND_PID
     echo -e "${GREEN}All services stopped successfully${NC}"
@@ -241,36 +251,59 @@ cleanup() {
 # Set up cleanup on script exit
 trap cleanup SIGINT SIGTERM
 
+# Setup required directories
+setup_directories() {
+    # Create backend data directories
+    ensure_directory "$SCRIPT_DIR/backend/data"
+    ensure_directory "$SCRIPT_DIR/backend/data/logs"
+    ensure_directory "$SCRIPT_DIR/logs"
+    ensure_directory "$SCRIPT_DIR/llama.cpp/models"
+}
+
+# Check llama.cpp build
+check_llama_cpp() {
+    local llama_server="$SCRIPT_DIR/llama.cpp/build/bin/llama-server"
+    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+        llama_server="${llama_server}.exe"
+    fi
+
+    if [ ! -f "$llama_server" ]; then
+        echo -e "${RED}Error: llama-server not found at $llama_server${NC}"
+        echo -e "${YELLOW}Please build llama.cpp first by running setup.sh${NC}"
+        exit 1
+    fi
+}
+
+# Main setup
+setup_directories
+check_llama_cpp
+
 # Clear screen and show welcome message
 clear
 print_centered "${BOLD}=== Llamalog Server Startup ===${NC}"
-echo -e "\n${BLUE}Starting all services...${NC}\n"
-
-# Start llama.cpp server
-echo -e "${BLUE}[1/3]${NC} Starting llama.cpp server..."
-./llama.cpp/build/bin/llama-server -m llama.cpp/models/Llama-3.2-3B-Instruct-f16.gguf > logs/llama.log 2>&1 &
-LLAMA_PID=$!
-
-# Wait for llama.cpp server to initialize
-countdown 5 "Initializing llama.cpp server"
+echo -e "\n${BLUE}Starting services...${NC}\n"
 
 # Start Python backend
-echo -e "\n${BLUE}[2/3]${NC} Starting Python backend..."
+echo -e "${BLUE}[1/2]${NC} Starting Python backend..."
 source .venv/bin/activate
-cd backend
-uvicorn main:app --reload > ../logs/backend.log 2>&1 &
+
+# Set PYTHONPATH to include project root
+export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
+
+cd "$SCRIPT_DIR/backend"
+uvicorn main:app --reload > "$SCRIPT_DIR/logs/backend.log" 2>&1 &
 BACKEND_PID=$!
-cd ..
+cd "$SCRIPT_DIR"
 
 # Wait for backend to initialize
 countdown 3 "Initializing backend server"
 
 # Start frontend
-echo -e "\n${BLUE}[3/3]${NC} Starting frontend..."
-cd my-chat-app
-npm run dev > ../logs/frontend.log 2>&1 &
+echo -e "\n${BLUE}[2/2]${NC} Starting frontend..."
+cd "$SCRIPT_DIR/my-chat-app"
+npm run dev > "$SCRIPT_DIR/logs/frontend.log" 2>&1 &
 FRONTEND_PID=$!
-cd ..
+cd "$SCRIPT_DIR"
 
 # Wait for frontend to initialize
 countdown 3 "Initializing frontend"
@@ -278,16 +311,36 @@ countdown 3 "Initializing frontend"
 # Show status dashboard
 clear
 print_centered "${BOLD}=== Llamalog Services Status ===${NC}"
-echo -e "\n${GREEN}✓ All services are running!${NC}\n"
+echo -e "\n${GREEN}✓ Services are running!${NC}\n"
+
 echo -e "📍 Access points:"
 echo -e "   ${BOLD}Frontend:${NC}    http://localhost:5173"
 echo -e "   ${BOLD}Backend API:${NC}  http://localhost:8000"
-echo -e "   ${BOLD}LLM Server:${NC}   http://localhost:8080\n"
+
+echo -e "\n${BLUE}Available Models:${NC}"
+if [ -d "$SCRIPT_DIR/llama.cpp/models" ]; then
+    models=$(ls "$SCRIPT_DIR/llama.cpp/models"/*.gguf 2>/dev/null)
+    if [ -n "$models" ]; then
+        echo -e "   Found models:"
+        for model in $models; do
+            size=$(ls -lh "$model" | awk '{print $5}')
+            echo -e "   • $(basename "$model") (${size})"
+        done
+    else
+        echo -e "   ${YELLOW}No models found in llama.cpp/models/${NC}"
+        echo -e "   Download a model and place it in the llama.cpp/models directory"
+    fi
+else
+    echo -e "   ${RED}Models directory not found!${NC}"
+fi
+
+echo -e "\n${YELLOW}ℹ️  Model loading is handled through the web interface${NC}"
 echo -e "${YELLOW}ℹ️  Press Ctrl+C to stop all services${NC}\n"
+
 echo -e "${BLUE}Log files:${NC}"
 echo -e "   • Frontend:  logs/frontend.log"
-echo -e "   • Backend:   logs/backend.log"
-echo -e "   • LLM:       logs/llama.log\n"
+echo -e "   • Backend:   backend/data/logs/backend.log"
+echo -e "   • LLM:       backend/data/logs/llama.log (when model is loaded)\n"
 
 # Start elapsed time counter
 while true; do
