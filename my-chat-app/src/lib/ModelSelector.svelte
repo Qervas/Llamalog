@@ -7,31 +7,22 @@
     let models = [];
     let loading = false;
     let error = null;
-    let currentModel = null;
     let statusCheckInterval;
-
-    async function loadModels() {
-        try {
-            const data = await api.getModels();
-            models = data.available_models || [];
-            if (data.current_model) {
-                // Update model settings if a model is currently loaded
-                modelSettings.update((settings) => ({
-                    ...settings,
-                    model: data.current_model,
-                }));
-            }
-        } catch (e) {
-            error = "Failed to load models list";
-            console.error("Error loading models:", e);
-        }
-    }
 
     $: if (!$serverStatus.healthy) {
         error = "Server is not responding";
     }
 
     $: canLoadModel = $serverStatus.healthy && !loading;
+
+    $: {
+        if ($serverStatus.modelServer?.current_model?.name) {
+            modelSettings.update((settings) => ({
+                ...settings,
+                model: $serverStatus.modelServer.current_model.name,
+            }));
+        }
+    }
 
     async function checkServerStatus() {
         try {
@@ -57,6 +48,23 @@
         }
     }
 
+    async function loadModels() {
+        try {
+            const data = await api.getModels();
+            models = data.available_models || [];
+            if (data.current_model) {
+                // Update model settings if a model is currently loaded
+                modelSettings.update((settings) => ({
+                    ...settings,
+                    model: data.current_model,
+                }));
+            }
+        } catch (e) {
+            error = "Failed to load models list";
+            console.error("Error loading models:", e);
+        }
+    }
+
     async function loadModel(modelId) {
         loading = true;
         error = null;
@@ -64,6 +72,10 @@
             await api.loadModel(modelId);
             await loadModels();
             await checkServerStatus();
+            modelSettings.update((settings) => ({
+                ...settings,
+                model: modelId,
+            }));
         } catch (e) {
             error = `Failed to load model: ${e.message}`;
         } finally {
@@ -74,7 +86,12 @@
     async function stopModel() {
         try {
             await api.stopModel();
-            currentModel = null;
+            await checkServerStatus();
+            await loadModels();
+            modelSettings.update((settings) => ({
+                ...settings,
+                model: null,
+            }));
         } catch (e) {
             error = "Failed to stop model";
         }
@@ -127,7 +144,7 @@
                         <button
                             class="stop"
                             on:click={stopModel}
-                            disabled={!canLoadModel}
+                            disabled={!canLoadModel || loading}
                         >
                             <svg
                                 viewBox="0 0 24 24"
@@ -136,13 +153,13 @@
                             >
                                 <rect x="6" y="6" width="12" height="12" />
                             </svg>
-                            Stop
+                            {loading ? "Stopping..." : "Stop"}
                         </button>
                     {:else}
                         <button
                             class="load"
                             on:click={() => loadModel(model.name)}
-                            disabled={!canLoadModel}
+                            disabled={!canLoadModel || loading}
                         >
                             <svg
                                 viewBox="0 0 24 24"

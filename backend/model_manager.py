@@ -181,6 +181,19 @@ class ModelManager:
             async with httpx.AsyncClient(timeout=2.0) as client:
                 response = await client.get(f"{self.llama_server_url}/health")
                 if response.status_code == 200:
+                    # Try to get model info from the server
+                    try:
+                        model_info = await client.get(f"{self.llama_server_url}/v1/models")
+                        model_data = model_info.json()
+                        if model_data and "model" in model_data:
+                            # Update current_model if server reports it's loaded
+                            model_name = model_data["model"].split("/")[-1].replace(".gguf", "")
+                            self.current_model = model_name
+                            if model_name in self.models:
+                                self.models[model_name].loaded = True
+                    except:
+                        pass
+
                     if self.current_model:
                         model = self.models.get(self.current_model)
                         return {
@@ -198,8 +211,8 @@ class ModelManager:
                         "status": "running",
                         "model": None
                     }
-        except:
-            pass
+        except Exception as e:
+            logger.debug(f"Error checking current model: {str(e)}")
 
         return {
             "status": "stopped",

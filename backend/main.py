@@ -106,10 +106,13 @@ async def get_model_status():
 async def health_check():
     """Check health status of the server and model."""
     try:
-        status = await model_manager.get_current_model()
+        model_status = await model_manager.get_current_model()
         return {
             "status": "healthy",
-            "model_server": status,
+            "model_server": {
+                "status": model_status["status"],
+                "current_model": model_status["model"]
+            },
             "api_server": {
                 "status": "running",
                 "version": "1.0.0"

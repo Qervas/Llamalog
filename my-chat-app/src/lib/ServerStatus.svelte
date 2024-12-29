@@ -6,13 +6,21 @@
     import { config } from "./config.js";
 
     let checkInterval;
+    $: modelStatus = $serverStatus.modelServer?.current_model
+        ? `Server Active - Model: ${$serverStatus.modelServer.current_model.name}`
+        : "Server Active - No model loaded";
 
     async function checkStatus() {
         try {
             const data = await api.checkHealth();
+            const modelStatus = await api.getModels();
+
             serverStatus.set({
                 healthy: data.status === "healthy",
-                modelServer: data.model_server,
+                modelServer: {
+                    ...data.model_server,
+                    current_model: modelStatus.current_model,
+                },
                 apiServer: data.api_server,
                 lastCheck: new Date(),
                 error: null,
@@ -54,14 +62,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
                     <path d="M20 6L9 17l-5-5" />
                 </svg>
-                <span>
-                    Server Active
-                    {#if $serverStatus.modelServer?.current_model?.name}
-                        - Model: {$serverStatus.modelServer.current_model.name}
-                    {:else}
-                        - No model loaded
-                    {/if}
-                </span>
+                <span>{modelStatus}</span>
             </div>
         {:else}
             <div class="status-indicator warning">
