@@ -3,6 +3,7 @@ from typing import Dict, List, Optional
 import json
 import httpx
 import asyncio
+import time
 from dataclasses import dataclass
 from config import settings
 import logging
@@ -88,40 +89,46 @@ class ModelManager:
         # Stop current model if any
         await self.stop_model()
 
-        # Start llama.cpp server with new model
         try:
-            # Start the llama.cpp server with the new model
+            # Build command with proper path handling
+            model_path = self.models_dir / f"{model_name}.gguf"
             cmd = [
                 str(self.llama_server_path),
-                "-m", str(self.models_dir / f"{model_name}.gguf"),
+                "-m", str(model_path),
                 "-c", str(model.context_length),
                 "--host", settings.LLAMA_SERVER_HOST,
-                "--port", str(settings.LLAMA_SERVER_PORT)
+                "--port", str(settings.LLAMA_SERVER_PORT),
+                "--embedding",  # Enable embedding API
+                "--port-emoji", str(settings.LLAMA_SERVER_PORT + 1),  # Additional port for emoji API
             ]
 
+            logger.info(f"Starting llama.cpp server with command: {' '.join(cmd)}")
+
+            # Start the server process
             self.llama_server_process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
 
-            # Wait for server to start
-            await asyncio.sleep(2)
-
-            # Check if server is responding
-            async with httpx.AsyncClient() as client:
+            # Wait for server to start (with timeout)
+            start_time = time.time()
+            while time.time() - start_time < 30:  # 30 second timeout
                 try:
-                    response = await client.get(f"{self.llama_server_url}/health")
-                    if response.status_code == 200:
-                        self.current_model = model_name
-                        model.loaded = True
-                        return True
+                    async with httpx.AsyncClient(timeout=2.0) as client:
+                        response = await client.get(f"{self.llama_server_url}/health")
+                        if response.status_code == 200:
+                            self.current_model = model_name
+                            model.loaded = True
+                            logger.info(f"Model {model_name} loaded successfully")
+                            return True
                 except:
-                    pass
+                    await asyncio.sleep(1)
+                    continue
 
-                await self.stop_model()  # something went wrong, clean up
-                return False
-
+            # If we get here, server didn't start properly
+            await self.stop_model()
+            raise Exception("Server failed to start within timeout period")
 
         except Exception as e:
             logger.error(f"Error loading model: {str(e)}")
@@ -132,13 +139,23 @@ class ModelManager:
         """Stop the currently running model."""
         if self.llama_server_process:
             try:
+                # Try graceful shutdown first
                 self.llama_server_process.terminate()
-                await self.llama_server_process.wait()
+                try:
+                    await asyncio.wait_for(self.llama_server_process.wait(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    # Force kill if graceful shutdown takes too long
+                    self.llama_server_process.kill()
+                    await self.llama_server_process.wait()
+
             except Exception as e:
                 logger.error(f"Error stopping model: {str(e)}")
+            finally:
+                self.llama_server_process = None
 
         if self.current_model:
-            self.models[self.current_model].loaded = False
+            if self.current_model in self.models:
+                self.models[self.current_model].loaded = False
             self.current_model = None
 
     def get_available_models(self) -> List[Dict]:
@@ -196,31 +213,23 @@ class ModelManager:
             "current_model": None,
             "available_models": self.get_available_models()
         }
+
         try:
-            # Check if server is running and responding
             async with httpx.AsyncClient(timeout=2.0) as client:
                 response = await client.get(f"{self.llama_server_url}/health")
                 if response.status_code == 200:
+                    status["status"] = "running"
                     if self.current_model:
                         model = self.models.get(self.current_model)
-                        return {
-                            "status": "running",
-                            "current_model": {
+                        if model:
+                            status["current_model"] = {
                                 "name": model.name,
                                 "size": model.size,
                                 "type": model.type,
                                 "description": model.description,
                                 "parameters": model.parameters,
                                 "context_length": model.context_length
-                            } if model else None,
-                            "uptime": await self._get_server_uptime()
-                        }
-                    else:
-                        return {
-                            "status": "running",
-                            "current_model": None,
-                            "uptime": await self._get_server_uptime()
-                        }
+                            }
         except Exception as e:
             logger.debug(f"Model status check failed: {str(e)}")
 

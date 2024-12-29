@@ -16,3 +16,4 @@ html2text
 httpx[http2]
 pydantic[dotenv]
 python-dotenv
+cachetools
