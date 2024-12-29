@@ -22,4 +22,4 @@ DATA_DIR = ensure_path(BACKEND_DIR / "data")
 MODELS_DIR = PROJECT_ROOT / "llama.cpp" / "models"
 LLAMA_SERVER = PROJECT_ROOT / "llama.cpp" / "build" / "bin" / "llama-server"
 if os.name == 'nt':  # Windows
-    LLAMA_SERVER = LLAMA_SERVER.with_suffix('.exe')
+    LLAMA_SERVER = PROJECT_ROOT / "llama.cpp" / "build" / "bin" / "Release" / "llama-server.exe"
